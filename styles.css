@@ -510,6 +510,9 @@ code {
   margin: 0;
   list-style: none;
 }
+.facts.gets {
+  row-gap: 34px;
+}
 .facts li {
   border-top: 3px solid var(--ink);
   padding-top: 14px;
