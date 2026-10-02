@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MushrifLoop — a supervised two-agent orchestrator for Claude Code</title>
+    <meta
+      name="description"
+      content="MushrifLoop is a free, open-source orchestrator for Claude Code on Windows. It runs a coding task as a supervised loop between two sessions: a Planner that plans and reviews, and an Executor that does the work."
+    />
+    <meta property="og:title" content="MushrifLoop" />
+    <meta property="og:description" content="A supervised two-agent orchestrator for Claude Code, for Windows. One session plans. One does the work. You stay in charge." />
+    <meta property="og:type" content="website" />
+    <link rel="alternate" hreflang="ar" href="ar/" />
+    <link rel="alternate" hreflang="en" href="./" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="wrap top">
+      <a class="brand" href="./"><img src="icon.svg" alt="" />MushrifLoop</a>
+      <nav>
+        <a href="#how">How it runs</a>
+        <a href="#holds">What it holds</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/hqudsi/mushrifloop">GitHub</a>
+        <a class="lang" href="ar/" lang="ar" hreflang="ar">العربية</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap hero">
+        <div>
+          <p class="eyebrow rise"><span class="word" lang="ar" dir="rtl">مشرف</span><i>/</i>mushrif<i>/</i>supervisor</p>
+          <h1 class="rise d1">One session <span class="p">plans</span>. One <span class="e">does the work</span>. You stay in charge.</h1>
+          <p class="lede rise d2">
+            MushrifLoop is an orchestrator for Claude Code: a Windows desktop app that runs a coding task as a supervised loop between two
+            sessions on your own computer. It passes each step across, holds the limits, and stops to ask whenever a decision is yours.
+          </p>
+          <div class="actions rise d3">
+            <a class="btn primary" href="https://github.com/hqudsi/mushrifloop/releases/latest">Download for Windows</a>
+            <a class="btn ghost" href="https://github.com/hqudsi/mushrifloop">Source on GitHub</a>
+          </div>
+          <p class="meta rise d4"><b>Free and open source</b> · Windows 10/11, x64 · needs Claude Code 2.1.251 or newer</p>
+        </div>
+
+        <svg class="loop rise d2" viewBox="0 0 460 460" role="img" aria-labelledby="loop-title loop-desc">
+          <title id="loop-title">The loop MushrifLoop supervises</title>
+          <desc id="loop-desc">
+            The Planner sends one instruction to the Executor, through your approval. The Executor sends back a report of what it changed and
+            ran, and the Planner reviews it. MushrifLoop sits in the middle and holds the limits.
+          </desc>
+          <circle class="ring" cx="230" cy="230" r="150" />
+          <path class="arc out" d="M124,124 A150,150 0 0 1 336,336" />
+          <path class="arc back" d="M336,336 A150,150 0 0 1 124,124" />
+          <text class="flow" x="230" y="60" text-anchor="middle">one instruction</text>
+          <text class="flow" x="230" y="410" text-anchor="middle">what it changed, what it ran</text>
+
+          <g class="gate">
+            <rect x="328" y="116" width="16" height="16" rx="3" transform="rotate(45 336 124)" />
+            <text x="356" y="112" text-anchor="start">your approval</text>
+          </g>
+          <g class="gate">
+            <rect x="116" y="328" width="16" height="16" rx="3" transform="rotate(45 124 336)" />
+            <text x="104" y="358" text-anchor="end">review</text>
+          </g>
+
+          <g class="hub">
+            <circle cx="230" cy="230" r="66" />
+            <g transform="translate(193.5 174) scale(0.285)">
+              <path d="M62 174V114C62 82 78 70 95 92L149 174" fill="none" stroke="#2FA3C7" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M194 174V114C194 82 178 70 161 92L107 174" fill="none" stroke="#F0803C" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+            </g>
+            <text x="230" y="258">holds the limits</text>
+          </g>
+
+          <circle class="token" r="7">
+            <animateMotion dur="8s" begin="2.8s" repeatCount="indefinite" path="M124,124 A150,150 0 0 1 336,336 A150,150 0 0 1 124,124" />
+          </circle>
+
+          <g class="node">
+            <rect x="34" y="90" width="180" height="68" rx="14" />
+            <rect class="bar" x="34" y="90" width="180" height="8" rx="4" fill="#2FA3C7" />
+            <text class="name" x="124" y="128" text-anchor="middle">Planner</text>
+            <text class="does" x="124" y="147" text-anchor="middle">plans · reviews · read-only</text>
+          </g>
+          <g class="node">
+            <rect x="246" y="302" width="180" height="68" rx="14" />
+            <rect class="bar" x="246" y="302" width="180" height="8" rx="4" fill="#F0803C" />
+            <text class="name" x="336" y="340" text-anchor="middle">Executor</text>
+            <text class="does" x="336" y="359" text-anchor="middle">edits · runs · reports</text>
+          </g>
+        </svg>
+      </div>
+
+      <section id="how">
+        <div class="wrap">
+          <p class="kicker">How it runs</p>
+          <h2>One step at a time, and every step reviewed.</h2>
+          <p class="sub">A task does not go to one session to finish alone. It goes round a loop, and the loop has an owner.</p>
+          <ol class="steps">
+            <li>
+              <h3>The Planner decides</h3>
+              <p>It reads the task and your project, and writes one instruction for the next step. It never touches your files.</p>
+            </li>
+            <li>
+              <h3>The Executor does it</h3>
+              <p>It carries out that one step in your project folder, then reports what it changed and what it ran.</p>
+            </li>
+            <li>
+              <h3>The Planner reviews</h3>
+              <p>It checks the report against the task. Then comes the next step, or the end, or a question for you.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="holds">
+        <div class="wrap">
+          <p class="kicker">Between them</p>
+          <h2>The app holds the limits, so the agents don't have to.</h2>
+          <p class="sub">None of this is left to the models. The orchestrator enforces it from outside the two sessions.</p>
+          <ul class="holds">
+            <li><b>Approvals</b><span>Run unattended, read every instruction before it is sent, or approve one full plan first.</span></li>
+            <li><b>A cycle cap</b><span>A task stops at the number of cycles you set.</span></li>
+            <li><b>Turn timeouts</b><span>A turn that runs too long is stopped, with its whole process tree.</span></li>
+            <li><b>Loop detection</b><span>The same step going round again is caught, and the task stops.</span></li>
+            <li><b>A commit per cycle</b><span>On a branch of its own. Your branch is left as it was.</span></li>
+            <li><b>Account checks</b><span>You see which Claude account a turn would run on before it runs.</span></li>
+            <li><b>Usage limits</b><span>When a limit is reached the task pauses with both sessions kept, to continue after the reset.</span></li>
+            <li><b>A full record</b><span>Every instruction, every report and the CLI's raw output are saved on your machine.</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="not">
+        <div class="wrap plain">
+          <div>
+            <p class="kicker">Plainly</p>
+            <h2>What it is not.</h2>
+            <p class="sub">It is not a way to make Claude Code cheaper, or to get more out of a subscription.</p>
+          </div>
+          <div class="box">
+            <p>
+              Two supervised sessions generally use more tokens and take longer than one plain session on the same work, more so on large
+              tasks. What you get in return is the supervision: an instruction you can read before it is sent, a reviewer that cannot
+              write, a record of every turn, and a task that stops and asks rather than guessing.
+            </p>
+            <p>A benchmark against plain Claude Code sessions is under way. Its numbers will be published when it is finished, whatever they say.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="install">
+        <div class="wrap">
+          <p class="kicker">Install</p>
+          <h2>Download, run, and it checks the rest.</h2>
+          <div class="install">
+            <ol>
+              <li>Install <a href="https://claude.com/claude-code">Claude Code</a> and sign in, if you have not already.</li>
+              <li>
+                Download the installer or the portable exe from the
+                <a href="https://github.com/hqudsi/mushrifloop/releases/latest">Releases page</a>.
+              </li>
+              <li>Run it. First-run setup checks that Claude Code is present, new enough and signed in before it lets you start.</li>
+            </ol>
+            <div class="note">
+              <h3>Windows will warn you</h3>
+              <p>
+                The installer is not code-signed yet, so SmartScreen says "Windows protected your PC". Choose <b>More info</b>, then
+                <b>Run anyway</b>. Each release lists the SHA-256 of its files. Check your download with:
+              </p>
+              <pre>certutil -hashfile &lt;the file you downloaded&gt; SHA256</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="data">
+        <div class="wrap">
+          <p class="kicker">Your data</p>
+          <h2>Everything stays on your machine.</h2>
+          <p class="sub">MushrifLoop never talks to the Anthropic API itself.</p>
+          <ul class="facts">
+            <li>
+              <b>Your own account</b>Every turn is an ordinary <code>claude</code> process, unmodified, under whoever is signed in to Claude
+              Code. The app has no account, key or billing of its own.
+            </li>
+            <li>
+              <b>No telemetry</b>The app collects nothing. The one network request it makes itself asks the npm registry for the latest
+              Claude Code version.
+            </li>
+            <li>
+              <b>Local files</b>Tasks, settings and logs live in <code>%APPDATA%\MushrifLoop</code>, and stay there when you uninstall
+              unless you choose otherwise.
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <p>
+          MushrifLoop is an independent open-source project under the Apache License 2.0. It is not affiliated with, endorsed by, or
+          sponsored by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
+        </p>
+        <p>
+          <a href="https://github.com/hqudsi/mushrifloop">GitHub</a> ·
+          <a href="https://github.com/hqudsi/mushrifloop/issues">Report a problem</a> ·
+          <a href="ar/" lang="ar" hreflang="ar">العربية</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MushrifLoop — منسّق (orchestrator) بإشراف لجلستين من Claude Code</title>
+    <meta
+      name="description"
+      content="MushrifLoop منسّق (orchestrator) مجاني ومفتوح المصدر لـ Claude Code على ويندوز. يشغّل مهمة البرمجة كحلقة بإشراف بين جلستين: Planner يخطّط ويراجع، وExecutor ينفّذ."
+    />
+    <meta property="og:title" content="MushrifLoop" />
+    <meta property="og:description" content="منسّق (orchestrator) بإشراف لجلستين من Claude Code، لويندوز. جلسة تخطّط، وجلسة تنفّذ، والقرار لك." />
+    <meta property="og:type" content="website" />
+    <link rel="alternate" hreflang="en" href="../" />
+    <link rel="alternate" hreflang="ar" href="./" />
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="wrap top">
+      <a class="brand" href="./"><img src="../icon.svg" alt="" /><span dir="ltr">MushrifLoop</span></a>
+      <nav>
+        <a href="#how">كيف يعمل</a>
+        <a href="#holds">ما يضبطه</a>
+        <a href="#install">التنصيب</a>
+        <a href="https://github.com/hqudsi/mushrifloop">GitHub</a>
+        <a class="lang" href="../" lang="en" hreflang="en" dir="ltr">English</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap hero">
+        <div>
+          <p class="eyebrow rise"><span class="word">مشرف</span><i>/</i><span dir="ltr">mushrif</span><i>/</i><span dir="ltr">supervisor</span></p>
+          <h1 class="rise d1">جلسة <span class="p">تخطّط</span>، وجلسة <span class="e">تنفّذ</span>، والقرار لك.</h1>
+          <p class="lede rise d2">
+            <span dir="ltr">MushrifLoop</span> منسّق (<span dir="ltr">orchestrator</span>) لـ Claude Code: برنامج سطح مكتب لويندوز يشغّل مهمة
+            البرمجة كحلقة بإشراف بين جلستين على حاسوبك أنت. ينقل كل خطوة بين الجلستين، ويضبط الحدود، ويتوقف ليسألك كلما كان القرار قرارك.
+          </p>
+          <div class="actions rise d3">
+            <a class="btn primary" href="https://github.com/hqudsi/mushrifloop/releases/latest">تنزيل لويندوز</a>
+            <a class="btn ghost" href="https://github.com/hqudsi/mushrifloop">الكود على GitHub</a>
+          </div>
+          <p class="meta rise d4"><b>مجاني ومفتوح المصدر</b> · ويندوز 10 و11، x64 · يحتاج Claude Code بإصدار 2.1.251 أو أحدث</p>
+        </div>
+
+        <svg class="loop rise d2" viewBox="0 0 460 460" role="img" aria-labelledby="loop-title loop-desc" direction="rtl">
+          <title id="loop-title">الحلقة التي يشرف عليها MushrifLoop</title>
+          <desc id="loop-desc">
+            يرسل Planner تعليمة واحدة إلى Executor بعد موافقتك. يعيد Executor تقريراً بما غيّره وما شغّله، ويراجعه Planner.
+            يجلس MushrifLoop في الوسط ويضبط الحدود.
+          </desc>
+          <circle class="ring" cx="230" cy="230" r="150" />
+          <path class="arc out" d="M124,124 A150,150 0 0 1 336,336" />
+          <path class="arc back" d="M336,336 A150,150 0 0 1 124,124" />
+          <text class="flow" x="230" y="60" text-anchor="middle">تعليمة واحدة</text>
+          <text class="flow" x="230" y="410" text-anchor="middle">ما غيّره، وما شغّله</text>
+
+          <g class="gate">
+            <rect x="328" y="116" width="16" height="16" rx="3" transform="rotate(45 336 124)" />
+            <text x="392" y="112" text-anchor="middle">موافقتك</text>
+          </g>
+          <g class="gate">
+            <rect x="116" y="328" width="16" height="16" rx="3" transform="rotate(45 124 336)" />
+            <text x="78" y="358" text-anchor="middle">التدقيق</text>
+          </g>
+
+          <g class="hub">
+            <circle cx="230" cy="230" r="66" />
+            <g transform="translate(193.5 174) scale(0.285)">
+              <path d="M62 174V114C62 82 78 70 95 92L149 174" fill="none" stroke="#2FA3C7" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M194 174V114C194 82 178 70 161 92L107 174" fill="none" stroke="#F0803C" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+            </g>
+            <text x="230" y="258">يضبط الحدود</text>
+          </g>
+
+          <circle class="token" r="7">
+            <animateMotion dur="8s" begin="2.8s" repeatCount="indefinite" path="M124,124 A150,150 0 0 1 336,336 A150,150 0 0 1 124,124" />
+          </circle>
+
+          <g class="node">
+            <rect x="34" y="90" width="180" height="68" rx="14" />
+            <rect class="bar" x="34" y="90" width="180" height="8" rx="4" fill="#2FA3C7" />
+            <text class="name" x="124" y="128" text-anchor="middle" direction="ltr">Planner</text>
+            <text class="does" x="124" y="147" text-anchor="middle">يخطّط · يراجع · قراءة فقط</text>
+          </g>
+          <g class="node">
+            <rect x="246" y="302" width="180" height="68" rx="14" />
+            <rect class="bar" x="246" y="302" width="180" height="8" rx="4" fill="#F0803C" />
+            <text class="name" x="336" y="340" text-anchor="middle" direction="ltr">Executor</text>
+            <text class="does" x="336" y="359" text-anchor="middle">يعدّل · يشغّل · يبلّغ</text>
+          </g>
+        </svg>
+      </div>
+
+      <section id="how">
+        <div class="wrap">
+          <p class="kicker">كيف يعمل</p>
+          <h2>خطوة واحدة في كل مرة، وكل خطوة تُراجَع.</h2>
+          <p class="sub">المهمة لا تذهب إلى جلسة واحدة لتنهيها وحدها. تدور في حلقة، وللحلقة صاحب.</p>
+          <ol class="steps">
+            <li>
+              <h3>Planner يقرّر</h3>
+              <p>يقرأ المهمة ومشروعك، ويكتب تعليمة واحدة للخطوة التالية. لا يلمس ملفاتك أبداً.</p>
+            </li>
+            <li>
+              <h3>Executor ينفّذ</h3>
+              <p>ينفّذ تلك الخطوة في مجلد مشروعك، ثم يبلّغ بما غيّره وما شغّله.</p>
+            </li>
+            <li>
+              <h3>Planner يراجع</h3>
+              <p>يقارن التقرير بالمهمة. بعدها تأتي الخطوة التالية، أو النهاية، أو سؤال لك.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="holds">
+        <div class="wrap">
+          <p class="kicker">بين الجلستين</p>
+          <h2>البرنامج يضبط الحدود، فلا تُترك للنماذج.</h2>
+          <p class="sub">لا شيء من هذا متروك للنموذج. المنسّق يفرضه من خارج الجلستين.</p>
+          <ul class="holds">
+            <li><b>الموافقات</b><span>شغّل المهمة بلا توقف، أو اقرأ كل تعليمة قبل إرسالها، أو وافق على خطة كاملة أولاً.</span></li>
+            <li><b>حدّ للدورات</b><span>المهمة تتوقف عند عدد الدورات الذي تحدده.</span></li>
+            <li><b>مهلة لكل دور</b><span>الدور الذي يطول يُوقَف، مع كل العمليات التي شغّلها.</span></li>
+            <li><b>كشف الدوران</b><span>إذا تكررت الخطوة نفسها، يُكشف ذلك وتتوقف المهمة.</span></li>
+            <li><b>commit لكل دورة</b><span>على فرع خاص بالمهمة. فرعك يبقى كما كان.</span></li>
+            <li><b>فحص الحساب</b><span>ترى أي حساب Claude سيعمل عليه الدور قبل أن يبدأ.</span></li>
+            <li><b>حدود الاستخدام</b><span>عند بلوغ الحد تتوقف المهمة مؤقتاً مع بقاء الجلستين، لتكمل بعد تجدّد الحد.</span></li>
+            <li><b>سجل كامل</b><span>كل تعليمة، وكل تقرير، ومخرجات CLI الخام محفوظة على حاسوبك.</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="not">
+        <div class="wrap plain">
+          <div>
+            <p class="kicker">بصراحة</p>
+            <h2>ما ليس عليه البرنامج.</h2>
+            <p class="sub">ليس وسيلة لجعل Claude Code أرخص، ولا للحصول على أكثر من اشتراكك.</p>
+          </div>
+          <div class="box">
+            <p>
+              جلستان بإشراف تستهلكان في العادة tokens أكثر ووقتاً أطول من جلسة واحدة عادية على العمل نفسه، ويزيد الفرق في المهام
+              الكبيرة. ما تحصل عليه بالمقابل هو الإشراف: تعليمة تقرؤها قبل إرسالها، ومدقّق لا يملك صلاحية الكتابة، وسجل لكل دور، ومهمة
+              تتوقف وتسأل بدل أن تخمّن.
+            </p>
+            <p>تجري الآن مقارنة مع جلسات Claude Code العادية. ستُنشر أرقامها عند انتهائها، أياً كانت.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="install">
+        <div class="wrap">
+          <p class="kicker">التنصيب</p>
+          <h2>نزّله وشغّله، وهو يفحص الباقي.</h2>
+          <div class="install">
+            <ol>
+              <li>نصّب <a href="https://claude.com/claude-code">Claude Code</a> وسجّل الدخول، إن لم تكن فعلت.</li>
+              <li>
+                نزّل ملف التنصيب أو النسخة المحمولة من
+                <a href="https://github.com/hqudsi/mushrifloop/releases/latest">صفحة الإصدارات</a>.
+              </li>
+              <li>شغّله. الإعداد الأول يتأكد أن Claude Code موجود، وبإصدار كافٍ، ومسجَّل الدخول، قبل أن تبدأ.</li>
+            </ol>
+            <div class="note">
+              <h3>ويندوز سيعرض تحذيراً</h3>
+              <p>
+                ملف التنصيب غير موقَّع رقمياً بعد، لذلك يعرض SmartScreen رسالة <span dir="ltr">"Windows protected your PC"</span>. اختر
+                <b dir="ltr">More info</b> ثم <b dir="ltr">Run anyway</b>. كل إصدار يذكر بصمة SHA-256 لملفاته. افحص ما نزّلته بهذا
+                الأمر:
+              </p>
+              <pre>certutil -hashfile &lt;file&gt; SHA256</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="data">
+        <div class="wrap">
+          <p class="kicker">بياناتك</p>
+          <h2>كل شيء يبقى على حاسوبك.</h2>
+          <p class="sub"><span dir="ltr">MushrifLoop</span> لا يتصل بواجهة Anthropic البرمجية بنفسه أبداً.</p>
+          <ul class="facts">
+            <li>
+              <b>حسابك أنت</b>كل دور هو عملية <code>claude</code> عادية وغير معدَّلة، تعمل بحساب من سجّل الدخول في Claude Code. ليس للبرنامج
+              حساب ولا مفتاح ولا فوترة.
+            </li>
+            <li>
+              <b>بلا تتبّع</b>البرنامج لا يجمع شيئاً. الطلب الوحيد الذي يرسله بنفسه يسأل سجل npm عن آخر إصدار من Claude Code.
+            </li>
+            <li>
+              <b>ملفات محلية</b>المهام والإعدادات والسجلات في <code>%APPDATA%\MushrifLoop</code>، وتبقى هناك عند إزالة البرنامج إلا إذا
+              اخترت غير ذلك.
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <p>
+          <span dir="ltr">MushrifLoop</span> مشروع مستقل ومفتوح المصدر برخصة Apache 2.0. لا يتبع Anthropic، وليس معتمداً منها ولا برعايتها.
+          <span dir="ltr">"Claude"</span> و<span dir="ltr">"Claude Code"</span> علامتان تجاريتان لـ Anthropic.
+        </p>
+        <p>
+          <a href="https://github.com/hqudsi/mushrifloop">GitHub</a> ·
+          <a href="https://github.com/hqudsi/mushrifloop/issues">بلّغ عن مشكلة</a> ·
+          <a href="../" lang="en" hreflang="en" dir="ltr">English</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
