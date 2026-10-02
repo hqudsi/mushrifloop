@@ -669,6 +669,9 @@ code {
   .tour.auto:hover .tab:has(input:checked)::before {
     animation-play-state: paused;
   }
+  .tour.auto:hover .segs i::after {
+    animation-play-state: paused !important;
+  }
 }
 .tab:has(input:checked) {
   background: var(--card);
@@ -685,6 +688,12 @@ code {
   display: grid;
   justify-items: end;
   gap: 12px;
+}
+.segs {
+  display: none;
+}
+.rail {
+  justify-self: stretch;
 }
 .frame {
   display: none;
@@ -913,6 +922,142 @@ footer p {
   }
   .tab:has(input:checked) span {
     display: block;
+  }
+  /* With the script (it sets .live) a phone gets the screens as a rail to swipe: a bar of four segments over
+     it shows the place and fills with the turn, and the chosen screen's words sit under the rail. */
+  .tour.live {
+    gap: 12px;
+  }
+  .tour.live .stage {
+    display: contents;
+  }
+  .tour.live .segs {
+    order: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .segs i {
+    position: relative;
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: var(--line);
+  }
+  .segs i::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--planner);
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  [dir='rtl'] .segs i::after {
+    transform-origin: right;
+  }
+  .tour:has(#tour-1:checked) .segs i:nth-child(-n + 1)::after,
+  .tour:has(#tour-2:checked) .segs i:nth-child(-n + 2)::after,
+  .tour:has(#tour-3:checked) .segs i:nth-child(-n + 3)::after,
+  .tour:has(#tour-4:checked) .segs i:nth-child(-n + 4)::after {
+    transform: scaleX(1);
+  }
+  .tour.auto:has(#tour-1:checked) .segs i:nth-child(1)::after,
+  .tour.auto:has(#tour-2:checked) .segs i:nth-child(2)::after,
+  .tour.auto:has(#tour-3:checked) .segs i:nth-child(3)::after,
+  .tour.auto:has(#tour-4:checked) .segs i:nth-child(4)::after {
+    animation: turn-x 6s linear both;
+  }
+  @keyframes turn-x {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  /* The rail runs to the screen's edges, so the next screen shows its side and asks to be pulled in. */
+  .tour.live .rail {
+    order: 2;
+    display: flex;
+    gap: 12px;
+    margin-inline: -24px;
+    padding-inline: 24px;
+    scroll-padding-inline: 24px;
+    padding-block: 2px 26px;
+    margin-bottom: -22px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  .tour.live .rail::-webkit-scrollbar {
+    display: none;
+  }
+  .tour.live .frame {
+    display: block;
+    flex: 0 0 88%;
+    aspect-ratio: 4 / 3;
+    scroll-snap-align: start;
+  }
+  .tour.live .frame img {
+    width: var(--mz, 100%);
+    left: var(--mx, 0);
+    top: var(--my, 0);
+  }
+  /* The four items lie on one another, so the place keeps one height whichever is shown. */
+  .tour.live .tabs {
+    order: 3;
+    gap: 0;
+  }
+  .tour.live .tab {
+    grid-area: 1 / 1;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    cursor: default;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .tour.live .tab:has(input:checked) {
+    visibility: visible;
+    opacity: 1;
+  }
+  .tour.live .tab::before {
+    display: none;
+  }
+  .tour.live .tab span {
+    display: block;
+  }
+  .tour.live .tab b {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .tour.live .tab b::after {
+    color: var(--ink-2);
+    font-weight: 330;
+    font-size: 14px;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+  .tour.live .tab:nth-child(1) b::after {
+    content: '1 / 4';
+  }
+  .tour.live .tab:nth-child(2) b::after {
+    content: '2 / 4';
+  }
+  .tour.live .tab:nth-child(3) b::after {
+    content: '3 / 4';
+  }
+  .tour.live .tab:nth-child(4) b::after {
+    content: '4 / 4';
+  }
+  .tour.live .flip {
+    order: 4;
+    justify-self: end;
   }
   .holds {
     grid-template-columns: minmax(0, 1fr);
