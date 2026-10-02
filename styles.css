@@ -510,6 +510,55 @@ code {
   margin: 0;
   list-style: none;
 }
+/* ── the app's own screens ───────────────────────────────── */
+.shot {
+  margin: 0;
+}
+.shot a {
+  display: block;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: var(--card);
+  transition: transform 0.15s ease;
+}
+.shot a:hover {
+  transform: translateY(-3px);
+}
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.shot figcaption {
+  margin-top: 12px;
+  color: var(--ink-2);
+  font-size: 15.5px;
+  max-width: 60em;
+}
+.shot figcaption b {
+  color: var(--ink);
+  font-weight: 560;
+}
+.shots .shot a {
+  position: relative;
+  aspect-ratio: 16 / 10;
+}
+.shots .shot img {
+  position: absolute;
+  max-width: none;
+  width: var(--z, 100%);
+  left: var(--x, 0);
+  top: var(--y, 0);
+}
+.shots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  margin-top: 30px;
+}
+
 .facts.gets {
   row-gap: 34px;
 }
@@ -594,7 +643,8 @@ footer p {
     padding-block: 20px 48px;
   }
   .steps,
-  .facts {
+  .facts,
+  .shots {
     grid-template-columns: minmax(0, 1fr);
   }
   .holds {
