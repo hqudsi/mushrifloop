@@ -249,7 +249,7 @@ h1 .e {
   display: block;
   overflow: visible;
   --gate: #7a4fe0;
-  --cycle: 10s;
+  --cycle: 13.2s;
   --begin: 2.8s;
 }
 @media (prefers-color-scheme: dark) {
@@ -369,46 +369,46 @@ h1 .e {
     stroke-dashoffset: 0;
   }
 }
-/* One cycle: the Planner 0–8 %, your approval 26–36 %, the Executor 50–58 %, the review 74–84 %. */
+/* One cycle of 13.2 s: the Planner 0–6 %, your approval 24–32 %, the Executor 50–56 %, the review 74–82 %. */
 @keyframes planner-lit {
-  0%, 8% { stroke: var(--planner); stroke-width: 3.5; }
-  15%, 93% { stroke: var(--ink); stroke-width: 1.5; }
+  0%, 6% { stroke: var(--planner); stroke-width: 3.5; }
+  11%, 95% { stroke: var(--ink); stroke-width: 1.5; }
   100% { stroke: var(--planner); stroke-width: 3.5; }
 }
 @keyframes executor-lit {
-  0%, 44% { stroke: var(--ink); stroke-width: 1.5; }
-  50%, 58% { stroke: var(--executor); stroke-width: 3.5; }
-  65%, 100% { stroke: var(--ink); stroke-width: 1.5; }
+  0%, 45.5% { stroke: var(--ink); stroke-width: 1.5; }
+  50%, 56% { stroke: var(--executor); stroke-width: 3.5; }
+  61.5%, 100% { stroke: var(--ink); stroke-width: 1.5; }
 }
 @keyframes approval-pill {
-  0%, 25% { fill: var(--card); stroke: var(--ink); }
-  28%, 36% { fill: var(--gate); stroke: var(--gate); }
-  43%, 100% { fill: var(--card); stroke: var(--ink); }
+  0%, 23.5% { fill: var(--card); stroke: var(--ink); }
+  25.5%, 31.8% { fill: var(--gate); stroke: var(--gate); }
+  37%, 100% { fill: var(--card); stroke: var(--ink); }
 }
 @keyframes approval-ink {
-  0%, 25% { fill: var(--ink); }
-  28%, 36% { fill: var(--paper); }
-  43%, 100% { fill: var(--ink); }
+  0%, 23.5% { fill: var(--ink); }
+  25.5%, 31.8% { fill: var(--paper); }
+  37%, 100% { fill: var(--ink); }
 }
 @keyframes approval-icon {
-  0%, 25% { stroke: var(--gate); }
-  28%, 36% { stroke: var(--paper); }
-  43%, 100% { stroke: var(--gate); }
+  0%, 23.5% { stroke: var(--gate); }
+  25.5%, 31.8% { stroke: var(--paper); }
+  37%, 100% { stroke: var(--gate); }
 }
 @keyframes review-pill {
-  0%, 73% { fill: var(--card); stroke: var(--ink); }
-  76%, 84% { fill: var(--gate); stroke: var(--gate); }
-  91%, 100% { fill: var(--card); stroke: var(--ink); }
+  0%, 73.5% { fill: var(--card); stroke: var(--ink); }
+  75.5%, 81.8% { fill: var(--gate); stroke: var(--gate); }
+  87%, 100% { fill: var(--card); stroke: var(--ink); }
 }
 @keyframes review-ink {
-  0%, 73% { fill: var(--ink); }
-  76%, 84% { fill: var(--paper); }
-  91%, 100% { fill: var(--ink); }
+  0%, 73.5% { fill: var(--ink); }
+  75.5%, 81.8% { fill: var(--paper); }
+  87%, 100% { fill: var(--ink); }
 }
 @keyframes review-icon {
-  0%, 73% { stroke: var(--gate); }
-  76%, 84% { stroke: var(--paper); }
-  91%, 100% { stroke: var(--gate); }
+  0%, 73.5% { stroke: var(--gate); }
+  75.5%, 81.8% { stroke: var(--paper); }
+  87%, 100% { stroke: var(--gate); }
 }
 
 /* ── sections ────────────────────────────────────────────── */
