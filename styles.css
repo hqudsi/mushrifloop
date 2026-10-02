@@ -600,52 +600,154 @@ code {
   list-style: none;
 }
 /* ── the app's own screens ───────────────────────────────── */
-.shot {
-  margin: 0;
+/* One screen at a time: the list at the side chooses it. The radios and the checkbox do the work, so no script. */
+.tour {
+  display: grid;
+  grid-template-columns: minmax(0, 0.46fr) minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+  margin-top: 30px;
 }
-.shot a {
+.tour input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.tabs {
+  display: grid;
+  gap: 4px;
+}
+.tab {
+  position: relative;
   display: block;
-  border: 1.5px solid var(--ink);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  background: var(--card);
-  transition: transform 0.15s ease;
-}
-.shot a:hover {
-  transform: translateY(-3px);
-}
-.shot img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-.shot figcaption {
-  margin-top: 12px;
+  cursor: pointer;
+  padding: 12px 18px;
+  border-inline-start: 3px solid var(--line);
   color: var(--ink-2);
   font-size: 15.5px;
-  max-width: 60em;
+  line-height: 1.55;
 }
-.shot figcaption b {
+.tab b {
+  display: block;
   color: var(--ink);
   font-weight: 560;
+  font-size: 18px;
 }
-.shots .shot a {
+.tab span {
+  display: block;
+}
+.tab:hover {
+  border-color: var(--ink-2);
+}
+.tab:has(input:checked) {
+  border-color: var(--planner);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  border-start-end-radius: 12px;
+  border-end-end-radius: 12px;
+}
+.tab:has(input:focus-visible),
+.flip:has(input:focus-visible) {
+  outline: 3px solid var(--planner);
+  outline-offset: 3px;
+}
+.stage {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+.frame {
+  display: none;
   position: relative;
+  width: 100%;
   aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  background: var(--card);
 }
-.shots .shot img {
+/* A frame shows either the whole screen or a part of it: --z is the picture's width, --x and --y move it. */
+.frame img {
   position: absolute;
   max-width: none;
+  height: auto;
   width: var(--z, 100%);
   left: var(--x, 0);
   top: var(--y, 0);
 }
-.shots {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
-  margin-top: 30px;
+.tour:has(#tour-1:checked) .f1,
+.tour:has(#tour-2:checked) .f2,
+.tour:has(#tour-3:checked) .f3,
+.tour:has(#tour-4:checked) .f4 {
+  display: block;
+}
+/* The screens follow the device's theme; the switch shows the other one. */
+.tour .d {
+  display: none;
+}
+.tour:has(.flip input:checked) .l {
+  display: none;
+}
+.tour:has(.flip input:checked) .d {
+  display: block;
+}
+.flip {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.flip span {
+  padding: 2px 14px;
+  border-radius: 999px;
+}
+.flip .lt,
+.flip:has(input:checked) .dk {
+  background: var(--ink);
+  color: var(--paper);
+}
+.flip:has(input:checked) .lt {
+  background: none;
+  color: inherit;
+}
+@media (prefers-color-scheme: dark) {
+  .tour .l {
+    display: none;
+  }
+  .tour .d {
+    display: block;
+  }
+  .tour:has(.flip input:checked) .l {
+    display: block;
+  }
+  .tour:has(.flip input:checked) .d {
+    display: none;
+  }
+  .flip .dk,
+  .flip:has(input:checked) .lt {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .flip .lt,
+  .flip:has(input:checked) .dk {
+    background: none;
+    color: inherit;
+  }
+}
+/* A browser without :has() shows the four screens one under the other, in the device's theme. */
+@supports not selector(:has(a)) {
+  .frame {
+    display: block;
+  }
+  .flip {
+    display: none;
+  }
 }
 
 .facts.gets {
@@ -706,6 +808,24 @@ footer p {
     transform: none;
   }
 }
+/* Blocks below the first screen wait, then rise in when they scroll into view (site.js adds the classes). */
+.wait {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.65s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.65s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.wait.in {
+  opacity: 1;
+  transform: none;
+}
+@media print {
+  .wait {
+    opacity: 1;
+    transform: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .rise,
   .loop .arc {
@@ -740,8 +860,21 @@ footer p {
   }
   .steps,
   .facts,
-  .shots {
+  .tour {
     grid-template-columns: minmax(0, 1fr);
+  }
+  /* On a narrow screen the list is short: only the chosen screen keeps its sentence. */
+  .tour {
+    gap: 18px;
+  }
+  .tab {
+    padding-block: 8px;
+  }
+  .tab span {
+    display: none;
+  }
+  .tab:has(input:checked) span {
+    display: block;
   }
   .holds {
     grid-template-columns: minmax(0, 1fr);
