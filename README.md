@@ -28,16 +28,31 @@ your machine, unmodified, under whoever is signed in to Claude Code. All the wor
 account and its limits; the app has no account, key or billing of its own. First-run setup checks that the
 CLI is present, new enough and signed in before it lets you start.
 
-## What it is not
+## What you get
 
-It is not a way to make Claude Code cheaper or to get more out of a subscription. Two supervised sessions
-generally use more tokens and take longer than one plain session on the same work, more so on large tasks.
-What you get in return is the supervision: an instruction you can read and approve before it reaches the
-Executor, a reviewer with no write access, a full record of every turn, and a task that stops and asks
-rather than guessing.
+- **Supervision.** Every instruction can be read and approved before it reaches the Executor.
+- **A review of every step.** A second session checks each result against the task before the next step
+  starts.
+- **Coordination.** The app moves the work between the two sessions, and handles context, limits and
+  handoffs itself.
+- **Follow-up.** A timeline of every cycle, a commit per cycle, and the full record of every turn.
+- **Your time.** A long task runs unattended and calls you only when a decision is yours.
 
-A benchmark against plain Claude Code sessions is under way. Its numbers will be published here when it is
-finished, whatever they say.
+## What it costs
+
+How much it uses depends on the size of the task, and on what you compare it with. In our first
+measurements (22 tasks, one run each, with the Planner on Opus and the Executor on Sonnet):
+
+- **Small and medium tasks** cost about a quarter less than a plain Opus session.
+- **Large tasks** cost a little over twice as much as a plain Opus session.
+- Against a plain Sonnet session it cost more at every size: about 1.4 times on small and medium tasks, and
+  1.7 times on large ones.
+- The Planner is the small part of the cost: about 6% on large tasks. The Executor's work is the rest.
+- It takes longer than a plain session, nearly twice as long on large tasks. It does not need you while it
+  runs.
+- The three finished the medium and large tasks equally well.
+
+These are early numbers. The full benchmark is under way and will be published here, whatever it says.
 
 ## Install
 
