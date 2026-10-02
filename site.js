@@ -45,12 +45,43 @@
 
   const tour = document.querySelector('.tour');
   const rail = tour?.querySelector('.rail');
-  if (!tour || !rail) return;
+  // .live is set below: if it is already there, this script has run on the page once and must not run again.
+  if (!tour || !rail || tour.classList.contains('live')) return;
   const screens = [...tour.querySelectorAll('input[name="tour"]')];
   const frames = [...rail.querySelectorAll('.frame')];
+
+  // The turns' clock (used in 3): how much of the turn is spent, and the timer for the rest of it.
+  const TURN = 6000;
+  let inView = false;
+  let held = false;
+  let spent = 0;
+  let since = 0;
+  let clock = 0;
+  const stopClock = () => {
+    if (!clock) return;
+    clearTimeout(clock);
+    clock = 0;
+    spent += performance.now() - since;
+  };
+  const runClock = () => {
+    if (clock || chosenByVisitor || !inView || held || document.hidden) return;
+    since = performance.now();
+    clock = setTimeout(
+      () => {
+        clock = 0;
+        spent = 0;
+        const next = (screens.findIndex((screen) => screen.checked) + 1) % screens.length;
+        screens[next].checked = true;
+        bring(next);
+        runClock();
+      },
+      Math.max(0, TURN - spent),
+    );
+  };
   let chosenByVisitor = false;
   const visitorChose = () => {
     chosenByVisitor = true;
+    stopClock();
     tour.classList.remove('auto');
   };
 
@@ -88,20 +119,51 @@
     bring(screens.indexOf(event.target));
   });
 
-  // 3. The turns. The stylesheet times a turn (the chosen item's mark, or its segment on a phone, fills in six
-  //    seconds; the pointer over the screens holds it); when it ends, the next screen is chosen here.
+  // 3. The turns. One clock, here, counts a turn; the stylesheet only draws the time passing (the chosen item's
+  //    mark, or its segment on a phone, fills in the same six seconds). The clock does not listen for the
+  //    drawing to end: on one phone that came twice a turn and every second screen was skipped.
   if (still) return;
-  tour.addEventListener('animationend', (event) => {
-    if (!event.animationName.startsWith('turn') || chosenByVisitor) return;
-    const next = (screens.findIndex((screen) => screen.checked) + 1) % screens.length;
-    screens[next].checked = true;
-    bring(next);
-  });
-  // Turns run only while the screens are in view, so a visitor meets them from the first one.
+  const show = () => {
+    if (!inView || document.hidden || chosenByVisitor) return;
+    if (!tour.classList.contains('auto')) {
+      // The drawing starts again from nothing when .auto comes back, so the clock does too.
+      spent = 0;
+      tour.classList.add('auto');
+    }
+    runClock();
+  };
+  const rest = () => {
+    stopClock();
+    spent = 0;
+    tour.classList.remove('auto');
+  };
+  // Turns run only while the screens are in view (and the page is the one being looked at), so a visitor meets
+  // them from the first one.
   new IntersectionObserver(
     ([entry]) => {
-      if (!chosenByVisitor) tour.classList.toggle('auto', entry.isIntersecting);
+      inView = entry.isIntersecting;
+      if (chosenByVisitor) return;
+      if (inView) show();
+      else rest();
     },
     { threshold: 0.35 },
   ).observe(tour);
+  document.addEventListener('visibilitychange', () => {
+    if (chosenByVisitor) return;
+    if (document.hidden) rest();
+    else show();
+  });
+  // A mouse over the screens holds the turn where it is; the clock and the drawing stop and go on together.
+  tour.addEventListener('pointerenter', (event) => {
+    if (event.pointerType !== 'mouse') return;
+    held = true;
+    tour.classList.add('held');
+    stopClock();
+  });
+  tour.addEventListener('pointerleave', (event) => {
+    if (event.pointerType !== 'mouse') return;
+    held = false;
+    tour.classList.remove('held');
+    runClock();
+  });
 })();

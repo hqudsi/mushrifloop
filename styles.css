@@ -642,7 +642,7 @@ code {
   border-color: var(--ink-2);
 }
 /* The chosen item's mark lies over its border. While the screens take turns (site.js sets .auto) the mark fills
-   in six seconds, and its end is what brings the next screen; the pointer over the screens holds it. */
+   in six seconds. It only draws the time: the clock that brings the next screen is in site.js. */
 .tab::before {
   content: '';
   position: absolute;
@@ -667,13 +667,12 @@ code {
     transform: scaleY(1);
   }
 }
-@media (hover: hover) {
-  .tour.auto:hover .tab:has(input:checked)::before {
-    animation-play-state: paused;
-  }
-  .tour.auto:hover .segs i::after {
-    animation-play-state: paused !important;
-  }
+/* site.js sets .held while a mouse is over the screens: its clock and this drawing stop and go on together. */
+.tour.auto.held .tab:has(input:checked)::before {
+  animation-play-state: paused;
+}
+.tour.auto.held .segs i::after {
+  animation-play-state: paused !important;
 }
 .tab:has(input:checked) {
   background: var(--card);
