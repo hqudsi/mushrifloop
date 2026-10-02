@@ -1,0 +1,63 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "newProjectRoot": "projects",
+  "projects": {
+    "renderer": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src/renderer",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "src/renderer/main.ts",
+            "index": "src/renderer/index.html",
+            "tsConfig": "tsconfig.renderer.json",
+            "outputPath": { "base": "dist/renderer" },
+            "baseHref": "./",
+            // The app mark (src/renderer/app/shared/app-mark.ts) draws the same SVG the Windows
+            // icon is generated from, so assets/ is the one source for both.
+            "assets": [{ "glob": "icon.svg", "input": "assets", "output": "assets" }],
+            "styles": ["src/renderer/styles.css"],
+            "polyfills": [],
+            "aot": true
+          },
+          "configurations": {
+            "production": {
+              "optimization": {
+                "scripts": true,
+                "fonts": true,
+                // Critical-CSS inlining ships the stylesheet as media="print" with an inline
+                // onload handler, which our CSP (script-src 'self') blocks — the styles would
+                // never activate. There is no network latency to optimise for here anyway.
+                "styles": { "minify": true, "inlineCritical": false }
+              },
+              "outputHashing": "all",
+              "sourceMap": false
+            },
+            "development": {
+              "optimization": false,
+              "sourceMap": true,
+              "outputHashing": "none"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "options": { "port": 4200, "host": "127.0.0.1" },
+          "configurations": {
+            "development": { "buildTarget": "renderer:build:development" },
+            "production": { "buildTarget": "renderer:build:production" }
+          },
+          "defaultConfiguration": "development"
+        }
+      }
+    }
+  },
+  "cli": {
+    "analytics": false,
+    "cache": { "enabled": true, "path": ".angular/cache" }
+  }
+}

@@ -1,0 +1,471 @@
+/* Layout from design/ "Settings — …": 240px nav, 28px/40px content padding, 720px column. */
+
+:host {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.sidebar {
+  width: 240px;
+  flex: none;
+  background: var(--bg-chrome);
+  border-right: 1px solid var(--border);
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.back {
+  padding: 0 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+.nav-item {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.nav-item:hover {
+  background: var(--bg-hover);
+}
+
+.nav-item.active {
+  background: var(--bg-selected);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 0 10px 10px;
+}
+
+/* Which account is live matters here too (SPEC.md §10), and it spans the nav as it does on the
+   main screen — the nav's own 10px/16px padding is cancelled out. */
+app-account-block {
+  margin: 0 -10px -16px;
+}
+
+/* Everything right of the nav. The scroll container is <app-content-pane> inside it, which spans
+   this whole pane, so the scrollbar sits at the window's right edge. */
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* A section's title with its Restore defaults button (SPEC.md §11). */
+.head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.head-row .restore {
+  flex: none;
+}
+
+.sub {
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* The column is a size container (see ContentPane): stack paired fields when it gets narrow. */
+@container content (max-width: 560px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .kv {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
+
+  .kv .v {
+    margin-bottom: 6px;
+  }
+}
+
+.hint.good {
+  color: var(--success);
+}
+.hint.bad {
+  color: var(--danger);
+}
+.row-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.row-controls .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.path {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+/* "Writing to" — the physical data location, always visible (NOTES.md §13). */
+.where {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  font-size: 12px;
+}
+
+.where .k {
+  color: var(--text-muted);
+}
+
+.where .v {
+  overflow-wrap: anywhere;
+}
+
+.where.redirected {
+  border-color: var(--executor);
+}
+
+.input.disabled {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.input.narrow {
+  width: 110px;
+  flex: none;
+}
+
+.suffixed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.suffixed .input {
+  width: 110px;
+}
+
+.suffix {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+
+.chip-input {
+  border: 0;
+  background: transparent;
+  outline: 0;
+  color: var(--text);
+  width: 80px;
+  font: inherit;
+}
+
+.chip-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Claude Code version card (SPEC.md §11) */
+.cc-version {
+  background: var(--bg-card);
+}
+
+.cc-title {
+  font-weight: 600;
+}
+
+.cc-lead {
+  margin: 12px 14px 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.cc-status {
+  margin: 0 14px 10px;
+  color: var(--text-2);
+}
+
+.cc-status.ok {
+  color: var(--success);
+}
+
+.cc-status.warn {
+  color: var(--executor);
+}
+
+.cc-status.bad {
+  color: var(--danger);
+}
+
+.cc-actions {
+  margin: 0 14px;
+}
+
+.cc-hint {
+  display: block;
+  margin: 8px 14px 12px;
+}
+
+.cc-output {
+  margin: 0 14px 14px;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+}
+
+/* connection result card */
+.result {
+  background: var(--bg-card);
+}
+
+.result-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+
+.result-head.ok {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.result-head.bad {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.result-time {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px 16px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+}
+
+.kv .k {
+  color: var(--text-muted);
+}
+
+.kv .v {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--bg-button);
+  color: var(--text-3);
+  font-size: 11px;
+  font-family: var(--font-sans);
+}
+
+.result-note {
+  margin: 0 14px 12px;
+}
+
+.radio-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* About (SPEC.md §11) */
+.about-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.about-text {
+  line-height: 1.6;
+  color: var(--text-2);
+  max-width: 640px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.path-line {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--planner);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.copy-error {
+  color: var(--danger);
+}
+
+.built-with {
+  color: var(--text-2);
+}
+
+/* About → Third-party licenses, a page of its own (SPEC.md §11). */
+.page-back {
+  margin-bottom: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.page-back:hover {
+  color: var(--text);
+}
+
+/* Each package draws its own top rule; this closes the last one. */
+.licenses {
+  border-bottom: 1px solid var(--border);
+}
+
+.pkg {
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
+}
+
+/* Stays a list item, so the disclosure triangle remains. */
+.pkg > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+.pkg > summary > span + span {
+  margin-left: 8px;
+}
+
+.pkg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 4px 16px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.pkg-body pre {
+  margin-top: 4px;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  font: 11px/1.5 var(--font-mono);
+  color: var(--text-3);
+  white-space: pre-wrap;
+}
+
+/* Pinned below the scrolling pane; its contents align with the content column above. */
+.save-bar {
+  flex: none;
+  height: 52px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-chrome);
+  display: flex;
+  align-items: center;
+}
+
+.save-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.save-bar .hint {
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

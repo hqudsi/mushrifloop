@@ -1,0 +1,51 @@
+{
+  "name": "mushrifloop",
+  "version": "1.3.0",
+  "private": true,
+  "description": "Supervised two-agent loop (Planner + Executor) over the Claude Code CLI.",
+  "author": "Hani Qudsi",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/hqudsi/mushrifloop",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hqudsi/mushrifloop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hqudsi/mushrifloop/issues"
+  },
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "ng build",
+    "start": "npm run build && electron .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.spec.json",
+    "try-turn": "tsc -p tsconfig.main.json && node dist/main/cli/try-turn.js",
+    "try-loop": "tsc -p tsconfig.main.json && node dist/main/cli/try-loop.js",
+    "icon": "electron scripts/make-icon.mjs",
+    "pack": "npm run build && electron-builder --win --x64 --config electron-builder.config.js --publish never",
+    "licenses": "ng build && tsc -p tsconfig.main.json && node dist/main/cli/licenses.js"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.1.8",
+    "@angular/cli": "^22.1.8",
+    "@angular/common": "^22.1.6",
+    "@angular/compiler": "^22.1.6",
+    "@angular/compiler-cli": "^22.1.6",
+    "@angular/core": "^22.1.6",
+    "@angular/platform-browser": "^22.1.6",
+    "@types/node": "^24.0.0",
+    "electron": "^44.4.1",
+    "electron-builder": "26.15.3",
+    "rxjs": "^7.8.2",
+    "tslib": "^2.8.1",
+    "typescript": "~6.0.0",
+    "vitest": "^4.0.8"
+  }
+}

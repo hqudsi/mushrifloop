@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExecutorOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "changed_files", "tests", "problems"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "failed", "needs_input"]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "What was done and the outcome, in 2-4 sentences of plain prose. Facts only; no pasted code, markup or long lists (those go in evidence)."
+    },
+    "evidence": {
+      "type": "string",
+      "maxLength": 4000,
+      "description": "Optional. The exact text the instruction asked for: code or markup lines, file paths with line numbers, search results. Plain text, one item per line, with forward slashes in paths. Leave it out when nothing was asked for."
+    },
+    "changed_files": {
+      "type": "array",
+      "description": "A LIST of objects, one per file you added, modified or deleted. Empty list if none. Example: [{\"path\": \"src/app/main.ts\", \"change\": \"modified\"}].",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "change"],
+        "properties": {
+          "path": { "type": "string", "description": "Project-relative path with forward slashes (src/app/main.ts), never backslashes." },
+          "change": { "type": "string", "enum": ["added", "modified", "deleted"] },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "description": "An OBJECT, not text. Example: {\"ran\": true, \"passed\": 12, \"failed\": 0}. Set ran to false when you did not run tests in this turn.",
+      "additionalProperties": false,
+      "required": ["ran"],
+      "properties": {
+        "ran": { "type": "boolean" },
+        "passed": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "notes": { "type": "string" }
+      }
+    },
+    "problems": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "A LIST of short strings, one problem per item: anything blocking, surprising or risky. Empty list if none."
+    },
+    "question": {
+      "type": "string",
+      "description": "Required when status=needs_input. The specific decision or information needed."
+    }
+  }
+}

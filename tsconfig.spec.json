@@ -1,0 +1,13 @@
+{
+  // Type-checks the tests as well (tsconfig.main.json leaves them out of the build). Nothing is emitted.
+  // Vitest loads specs as ES modules with bundler-style resolution, so this config does too.
+  "extends": "./tsconfig.main.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["src/main/**/*.ts", "src/preload/**/*.ts", "src/shared/**/*.ts", "vitest.config.ts"],
+  "exclude": []
+}

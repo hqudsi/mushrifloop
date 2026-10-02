@@ -1,0 +1,967 @@
+<nav class="sidebar">
+  <button type="button" class="back" (click)="back.emit()">← Back to tasks</button>
+  @for (item of sections; track item.id) {
+    <button type="button" class="nav-item" [class.active]="section() === item.id" (click)="openSection(item.id)">
+      {{ item.label }}
+    </button>
+  }
+  <div class="sidebar-foot">
+    @if (store.appInfo(); as info) {
+      <span class="hint mono">v{{ info.appVersion }} · Electron {{ info.electronVersion }}</span>
+    }
+  </div>
+  <app-account-block />
+</nav>
+
+<section class="content">
+  <app-content-pane #pane>
+    @if (store.error(); as error) {
+      <div class="callout danger">{{ error }}</div>
+    }
+
+    <!-- ───────────────────────────── General ───────────────────────────── -->
+    @if (section() === 'general') {
+      <div class="head-row">
+        <div>
+          <h1>General</h1>
+        </div>
+        <button type="button" class="btn restore" [title]="restoreHint('general')" (click)="restoreDefaults('general')">
+          Restore defaults
+        </button>
+      </div>
+
+      <div class="field">
+        <label class="label">Theme</label>
+        <div class="seg" style="width: 300px">
+          @for (theme of themes; track theme.id) {
+            <button
+              type="button"
+              [attr.aria-pressed]="settings().general.theme === theme.id"
+              (click)="setTheme(theme.id)"
+            >
+              {{ theme.label }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label">Data folder</label>
+        <div class="row-controls">
+          <div class="input mono path" [title]="dataFolderLabel()">{{ dataFolderLabel() }}</div>
+          <button type="button" class="btn" (click)="browseFolder()">Browse…</button>
+          @if (settings().general.dataFolder) {
+            <button type="button" class="btn" (click)="resetDataFolder()">Use default</button>
+          }
+          <button type="button" class="btn" (click)="openDataFolder()" title="Open the folder files are actually written to">
+            Open
+          </button>
+        </div>
+
+        @if (storage(); as storage) {
+          <div class="where" [class.redirected]="storage.dataFolder.redirected">
+            <span class="k">Writing to</span>
+            <span class="v mono">{{ storage.dataFolder.physicalPath }}</span>
+            @if (storage.settingsFolder.physicalPath !== storage.dataFolder.physicalPath) {
+              <span class="k">Settings file</span>
+              <span class="v mono">{{ storage.settingsFolder.physicalPath }}\settings.json</span>
+            }
+          </div>
+
+          @if (storage.dataFolder.redirected || storage.settingsFolder.redirected) {
+            <div class="callout warn">
+              <strong>Redirected by Windows.</strong> This window was started inside the
+              <span class="mono">{{ redirectingPackage() }}</span> app container (for example from a terminal in the
+              Claude desktop app), so files the app writes to
+              <span class="mono">{{ storage.dataFolder.path }}</span> physically land in the folder above, and other
+              programs will not find them at the usual path. Start {{ appName }} from an ordinary terminal or from
+              Explorer to write to the real folder.
+            </div>
+          }
+          @if (storage.dataFolder.method === 'probe-failed') {
+            <div class="callout warn">Could not verify where files land: {{ storage.dataFolder.detail }}</div>
+          }
+          @if (restartNeeded()) {
+            <span class="hint">The saved folder takes effect after a restart; until then this session keeps writing to the path above.</span>
+          }
+        }
+
+        <span class="hint">
+          Tasks, raw CLI output, usage and the log live here. <span class="mono">settings.json</span> always stays in
+          the default folder so the app can find it.
+        </span>
+      </div>
+
+      <div class="field">
+        <label class="label">Notifications</label>
+        <div class="card">
+          <div class="row">
+            <div class="row-text">
+              <span class="row-title">Task waiting for my input</span>
+              <span class="row-sub">When a task needs you: a Planner question, an approval, a waiver, a possible loop, an account change</span>
+            </div>
+            <button
+              type="button"
+              class="toggle"
+              [attr.aria-pressed]="settings().general.notifications.waitingForInput"
+              (click)="toggleNotification('waitingForInput')"
+            >
+              <span></span>
+            </button>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <span class="row-title">Task finished or failed</span>
+              <span class="row-sub">Also when a task stops on an error or a usage limit</span>
+            </div>
+            <button
+              type="button"
+              class="toggle"
+              [attr.aria-pressed]="settings().general.notifications.finishedOrFailed"
+              (click)="toggleNotification('finishedOrFailed')"
+            >
+              <span></span>
+            </button>
+          </div>
+          <div class="row">
+            <div class="row-text"><span class="row-title">Every completed cycle</span></div>
+            <button
+              type="button"
+              class="toggle"
+              [attr.aria-pressed]="settings().general.notifications.everyCompletedCycle"
+              (click)="toggleNotification('everyCompletedCycle')"
+            >
+              <span></span>
+            </button>
+          </div>
+          <div class="row">
+            <div class="row-text"><span class="row-title">Play a sound</span></div>
+            <button
+              type="button"
+              class="toggle"
+              [attr.aria-pressed]="settings().general.notifications.sound"
+              (click)="toggleNotification('sound')"
+            >
+              <span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label class="label" for="editor">Open files with</label>
+          <div class="row-controls">
+            <input
+              id="editor"
+              class="input mono"
+              [value]="settings().general.editorCommand"
+              (input)="setEditorCommand($any($event.target).value)"
+            />
+            <button type="button" class="btn" [disabled]="detectingEditor()" (click)="detectEditor()">
+              {{ detectingEditor() ? 'Checking…' : 'Detect' }}
+            </button>
+          </div>
+          <span class="hint">
+            When a task changes files, clicking a file name in the right panel opens it with this program.
+          </span>
+          <span class="hint">
+            Type <span class="mono">code</span> for VS Code, <span class="mono">notepad</span> for Notepad, or
+            the full path to any program.
+          </span>
+          @if (editorCheck(); as check) {
+            @if (check.ok) {
+              <span class="hint good">Found {{ check.program }} at {{ check.path }}</span>
+            } @else {
+              <span class="hint bad">{{ check.error }}</span>
+            }
+          }
+        </div>
+
+        <div class="field">
+          <label class="label" for="softcap">Soft daily token cap</label>
+          <input
+            id="softcap"
+            class="input mono"
+            type="number"
+            min="0"
+            placeholder="off"
+            [value]="settings().general.softDailyTokenCap ?? ''"
+            (input)="setSoftCap($any($event.target).value)"
+          />
+          <span class="hint">Pause new turns once today’s estimate passes this. Blank = off.</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="row-text">
+            <span class="row-title">First-run setup</span>
+            <span class="row-sub">Check Claude Code and which account is live, and go through the defaults again.</span>
+          </div>
+          <button type="button" class="btn" (click)="rerunSetup.emit()">Re-run setup</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="row-text">
+            <span class="row-title">Auto-resume at reset</span>
+            <span class="row-sub">When a task is rate-limited, resume it automatically at the reset time.</span>
+          </div>
+          <button
+            type="button"
+            class="toggle"
+            [attr.aria-pressed]="settings().general.autoResumeAtReset"
+            (click)="toggleAutoResume()"
+          >
+            <span></span>
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- ──────────────────────────  Task defaults ─────────────────────────── -->
+    @if (section() === 'taskDefaults') {
+      <div class="head-row">
+        <div>
+          <h1>Task defaults</h1>
+          <p class="sub">Pre-filled into every new task. Each task can override them.</p>
+        </div>
+        <button type="button" class="btn restore" [title]="restoreHint('taskDefaults')" (click)="restoreDefaults('taskDefaults')">
+          Restore defaults
+        </button>
+      </div>
+
+      <div class="grid-2">
+        @for (agent of agents; track agent.id) {
+          @let isPlanner = agent.id === 'planner';
+          @let modelId = isPlanner ? settings().taskDefaults.plannerModel : settings().taskDefaults.executorModel;
+          @let effort = isPlanner ? settings().taskDefaults.plannerEffort : settings().taskDefaults.executorEffort;
+          @let efforts = effortsForModel(modelId);
+
+          <div class="field">
+            <label class="label" [class.planner]="isPlanner" [class.executor]="!isPlanner">
+              <span class="dot"></span>{{ agent.label }} model
+            </label>
+            <!-- `selected` on the options, not `value` on the select: the select's value would be
+                 applied before @for has created the options, leaving the first one chosen. -->
+            <select class="select" [attr.title]="modelNote(modelId)" (change)="setModel(agent.id, $any($event.target).value)">
+              @for (model of models; track model.id) {
+                <option [value]="model.id" [selected]="model.id === modelId">{{ modelText(model.id) }}</option>
+              }
+            </select>
+
+            @if (efforts.length > 0) {
+              <select class="select" (change)="setEffort(agent.id, $any($event.target).value)">
+                @for (level of efforts; track level) {
+                  <option [value]="level" [selected]="level === effort">{{ level }}</option>
+                }
+              </select>
+            } @else {
+              <div class="input disabled">No effort control for this model</div>
+            }
+
+            @if (versionBlockFor(modelId); as block) {
+              <div class="callout danger">{{ block }} Choose another model or update Claude Code — Save is blocked until then.</div>
+            }
+            @if (fableWarningFor(modelId); as warning) {
+              <div class="callout danger">{{ warning }}</div>
+            }
+            @if (effort === 'max') {
+              <div class="callout warn">{{ maxEffortWarning }}</div>
+            }
+            <span class="hint mono">
+              rollover {{ formatTokens(rolloverFor(modelId)) }} / auto-compact
+              {{ formatTokens(autoCompactFor(modelId)) }} tokens
+            </span>
+          </div>
+        }
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label class="label">Max cycles</label>
+          <div class="stepper">
+            <button type="button" (click)="stepMaxCycles(-1)" aria-label="Fewer cycles">−</button>
+            <span>{{ settings().taskDefaults.maxCycles }}</span>
+            <button type="button" (click)="stepMaxCycles(1)" aria-label="More cycles">+</button>
+          </div>
+          <span class="hint">Hitting the cap fails the task with a reason.</span>
+        </div>
+
+        <div class="field">
+          <label class="label" for="timeout">Turn timeout</label>
+          <div class="suffixed">
+            <input
+              id="timeout"
+              class="input mono"
+              type="number"
+              min="1"
+              max="600"
+              [value]="settings().taskDefaults.turnTimeoutMinutes"
+              (input)="setNumber('turnTimeoutMinutes', $any($event.target).value, 1, 600)"
+            />
+            <span class="suffix">minutes</span>
+          </div>
+          <span class="hint">A turn exceeding this is killed and reported as an error.</span>
+        </div>
+
+        <div class="field">
+          <label class="label" for="slowturn">Slow-turn warning</label>
+          <div class="suffixed">
+            <input
+              id="slowturn"
+              class="input mono"
+              type="number"
+              min="1"
+              max="600"
+              [value]="settings().taskDefaults.slowTurnWarningMinutes"
+              (input)="setNumber('slowTurnWarningMinutes', $any($event.target).value, 1, 600)"
+            />
+            <span class="suffix">minutes</span>
+          </div>
+          <span class="hint">
+            A longer turn keeps running but is marked “slow turn”, and the Planner is told how long it took.
+            @if (settings().taskDefaults.slowTurnWarningMinutes >= settings().taskDefaults.turnTimeoutMinutes) {
+              <strong>Has no effect: it is not below the turn timeout.</strong>
+            }
+          </span>
+        </div>
+
+        <div class="field">
+          <label class="label" for="maxturns">Max steps per turn</label>
+          <input
+            id="maxturns"
+            class="input mono"
+            type="number"
+            min="1"
+            max="1000"
+            [value]="settings().taskDefaults.maxTurnsPerSession"
+            (input)="setNumber('maxTurnsPerSession', $any($event.target).value, 1, 1000)"
+          />
+          <span class="hint">
+            How many steps one agent may take in a single turn: each reply with its tool calls is a step. Counted afresh
+            every turn. Reaching it stops the turn as an error you can resume. Passed as <span class="mono">--max-turns</span>.
+          </span>
+        </div>
+
+        <div class="field">
+          <label class="label" for="rollover">Rollover at</label>
+          <div class="suffixed">
+            <input
+              id="rollover"
+              class="input mono"
+              type="number"
+              min="5"
+              max="95"
+              [value]="settings().taskDefaults.rolloverPercent"
+              (input)="setNumber('rolloverPercent', $any($event.target).value, 5, 95)"
+            />
+            <span class="suffix">% of auto-compact</span>
+          </div>
+          <span class="hint">Thresholds measured {{ autoCompactMeasuredOn }} on CLI {{ verifiedCliVersion }}.</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label">Approval mode</label>
+        <div class="seg" style="width: 420px">
+          @for (mode of approvalModes; track mode.id) {
+            <button
+              type="button"
+              [attr.aria-pressed]="settings().taskDefaults.approvalMode === mode.id"
+              (click)="setApprovalMode(mode.id)"
+            >
+              {{ mode.label }}
+            </button>
+          }
+        </div>
+        @for (mode of approvalModes; track mode.id) {
+          @if (settings().taskDefaults.approvalMode === mode.id) {
+            <span class="hint">{{ mode.hint }}</span>
+          }
+        }
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="row-text">
+            <span class="row-title">Planner context mode</span>
+            <span class="row-sub">
+              Isolated gives the Planner only Executor reports; Read-only lets it inspect the project tree.
+              Fixed once a task is created.
+            </span>
+          </div>
+          <div class="seg" style="width: 240px; height: 30px">
+            @for (mode of contextModes; track mode.id) {
+              <button
+                type="button"
+                [attr.aria-pressed]="settings().taskDefaults.plannerContextMode === mode.id"
+                (click)="setContextMode(mode.id)"
+              >
+                {{ mode.label }}
+              </button>
+            }
+          </div>
+        </div>
+        <div class="row">
+          <div class="row-text">
+            <span class="row-title">Auto-branch and commit per cycle</span>
+            <span class="row-sub">
+              Creates <span class="mono">{{ appSlug }}/&lt;task-id&gt;</span> and commits after every ok cycle.
+            </span>
+          </div>
+          <button
+            type="button"
+            class="toggle"
+            [attr.aria-pressed]="settings().taskDefaults.autoBranchAndCommit"
+            (click)="toggleAutoCommit()"
+          >
+            <span></span>
+          </button>
+        </div>
+        <div class="row">
+          <div class="row-text">
+            <span class="row-title">Fresh Executor session after rejected answers</span>
+            <span class="row-sub">
+              After this many Executor turns in a row whose structured answer was rejected, the next one starts in a
+              fresh session (a rollover). Off by default; each firing is logged in the timeline.
+            </span>
+          </div>
+          @if (settings().taskDefaults.freshExecutorAfterRejectedTurns; as turns) {
+            <div class="suffixed">
+              <input
+                class="input mono narrow"
+                type="number"
+                min="1"
+                [max]="freshExecutorMax"
+                aria-label="Turns with rejected answers"
+                [value]="turns"
+                (input)="setFreshExecutorTurns($any($event.target).value)"
+              />
+              <span class="suffix">turns</span>
+            </div>
+          }
+          <button
+            type="button"
+            class="toggle"
+            [attr.aria-pressed]="settings().taskDefaults.freshExecutorAfterRejectedTurns !== null"
+            (click)="toggleFreshExecutor()"
+          >
+            <span></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label">Required skills before done</label>
+        <div class="chips">
+          @for (skill of settings().taskDefaults.requiredSkillsBeforeDone; track skill) {
+            <span class="chip">
+              {{ skill }}
+              <button type="button" (click)="removeChip('requiredSkillsBeforeDone', skill)" aria-label="Remove">×</button>
+            </span>
+          }
+          <input
+            class="chip-input mono"
+            placeholder="+ add"
+            [value]="skillDraft()"
+            (input)="skillDraft.set($any($event.target).value)"
+            (keydown.enter)="addChip('requiredSkillsBeforeDone')"
+            (blur)="addChip('requiredSkillsBeforeDone')"
+          />
+        </div>
+        <span class="hint">A task cannot finish until the Executor has run these successfully.</span>
+      </div>
+
+      <div class="field">
+        <div class="section-head">
+          <span class="section-title">STANDING SYSTEM PROMPTS</span>
+          <span class="hint">applies to new sessions</span>
+        </div>
+        <div class="field">
+          <label class="label planner"><span class="dot"></span>Planner</label>
+          <textarea
+            class="textarea"
+            [value]="settings().taskDefaults.standingPrompts.planner"
+            (input)="setStandingPrompt('planner', $any($event.target).value)"
+          ></textarea>
+        </div>
+        <div class="field">
+          <label class="label executor"><span class="dot"></span>Executor</label>
+          <textarea
+            class="textarea"
+            [value]="settings().taskDefaults.standingPrompts.executor"
+            (input)="setStandingPrompt('executor', $any($event.target).value)"
+          ></textarea>
+        </div>
+      </div>
+    }
+
+    <!-- ─────────────────────  Claude Code connection ─────────────────────── -->
+    @if (section() === 'connection') {
+      <div class="head-row">
+        <div>
+          <h1>Claude Code connection</h1>
+          <p class="sub">
+            Both agents run through the local Claude Code CLI. The Planner runs with no tools; the Executor runs in
+            the project folder.
+          </p>
+        </div>
+        <button type="button" class="btn restore" [title]="restoreHint('claudeCode')" (click)="restoreDefaults('claudeCode')">
+          Restore defaults
+        </button>
+      </div>
+
+      <!-- SPEC.md §11: Claude Code, never the app. Every label names Claude Code; nothing runs on its own. -->
+      <div class="card cc-version">
+        <div class="result-head cc-title">
+          <span>Claude Code version</span>
+          @if (ccCheck(); as c) {
+            <span class="result-time">checked {{ clockOf(c.checkedAt) }}</span>
+          }
+        </div>
+        <p class="cc-lead">
+          This is Claude Code, the command-line tool {{ appName }} drives — not {{ appName }} itself.
+          {{ appName }} does not update itself; a new {{ appName }} comes as a new installer.
+        </p>
+        <div class="kv">
+          <span class="k">Installed</span>
+          <span class="v">
+            <span class="mono">Claude Code {{ ccInstalled() ?? 'not detected' }}</span>
+            @if (ccCheck(); as c) {
+              @if (c.installMethod) {
+                <span class="badge">{{ c.installMethod }}</span>
+              }
+              <span class="badge" [title]="c.channelAssumed ? 'claude doctor did not say which channel, so latest is assumed' : 'as claude doctor reports it'">
+                {{ c.channel }} channel{{ c.channelAssumed ? ' (assumed)' : '' }}
+              </span>
+            }
+          </span>
+          @if (ccCheck(); as c) {
+            <span class="k">Newest published</span>
+            <span class="v mono">{{ c.available ? 'Claude Code ' + c.available : '—' }}</span>
+          }
+        </div>
+        @if (ccCheck(); as c) {
+          <div class="cc-status" [class.ok]="c.newer === false" [class.warn]="c.newer === true" [class.bad]="c.error !== null">
+            @if (c.error) {
+              {{ c.error }}
+            } @else if (c.newer) {
+              Claude Code {{ c.available }} is available — you have {{ c.installed }}.
+            } @else {
+              Claude Code {{ c.installed }} is the newest on the {{ c.channel }} channel.
+            }
+          </div>
+        }
+        <div class="row-controls cc-actions">
+          <button type="button" class="btn" [disabled]="ccChecking() || ccUpdating()" (click)="checkClaudeCode()">
+            {{ ccChecking() ? 'Checking…' : 'Check for a newer Claude Code' }}
+          </button>
+          <button type="button" class="btn" [class.btn-accent]="ccCheck()?.newer === true" [disabled]="ccChecking() || ccUpdating()" (click)="updateClaudeCode()">
+            {{ ccUpdating() ? 'Updating Claude Code…' : 'Update Claude Code' }}
+          </button>
+        </div>
+        <span class="hint cc-hint">
+          The check asks Claude Code for its version and reads the npm registry: it spends no quota and installs
+          nothing. The update runs Claude Code's own <span class="mono">claude update</span>, only when you press it,
+          and not while a task is running.
+        </span>
+        @if (ccUpdate(); as u) {
+          <div class="cc-status" [class.ok]="u.ok" [class.bad]="!u.ok">
+            @if (u.refused) {
+              {{ u.refused }}
+            } @else if (u.ok && u.before !== u.after) {
+              Claude Code updated from {{ u.before ?? '?' }} to {{ u.after ?? '?' }}. A newer Claude Code can change what
+              an alias such as <span class="mono">opus</span> runs — the model names in {{ appName }} follow it.
+            } @else if (u.ok) {
+              Claude Code is still {{ u.after ?? '?' }}: <span class="mono">claude update</span> found nothing to install.
+            } @else {
+              <span class="mono">claude update</span> did not succeed{{ u.exitCode !== null ? ' (exit ' + u.exitCode + ')' : '' }}{{ u.error ? ': ' + u.error : '' }}.
+              Claude Code is {{ u.after ?? 'at an unknown version' }}.
+            }
+          </div>
+        }
+        @if (ccOutput()) {
+          <pre class="cc-output mono">{{ ccOutput() }}</pre>
+        }
+      </div>
+
+      <div class="field">
+        <label class="label">Path to <span class="mono">claude</span> binary</label>
+        <div class="row-controls">
+          <input
+            class="input mono"
+            [value]="settings().claudeCode.binaryPath ?? ''"
+            [placeholder]="autoDetectedLabel"
+            (input)="setBinaryPath($any($event.target).value)"
+          />
+          <button type="button" class="btn" (click)="autoDetect()">Auto-detect</button>
+          <button type="button" class="btn" (click)="browseBinary()">Browse…</button>
+        </div>
+        <span class="hint">
+          Blank = first <span class="mono">claude</span> on PATH. An npm <span class="mono">.cmd</span> shim is
+          resolved to the real executable automatically.
+        </span>
+      </div>
+
+      <div class="field">
+        <div>
+          <button type="button" class="btn btn-accent" [disabled]="testing()" (click)="testConnection()">
+            {{ testing() ? 'Testing…' : 'Test connection' }}
+          </button>
+        </div>
+
+        @if (testResult(); as result) {
+          <div class="card result">
+            <div class="result-head" [class.ok]="result.ok" [class.bad]="!result.ok">
+              <span>●</span>
+              {{ result.ok ? 'Connected' : 'Not connected' }}
+              <span class="result-time mono">{{ checkedAtLabel(result) }}</span>
+            </div>
+
+            <div class="kv">
+              <span class="k">Version</span>
+              <span class="v mono">{{ result.version ?? 'unknown' }}</span>
+
+              <span class="k">Binary</span>
+              <span class="v mono path" [title]="result.binary.path">{{ result.binary.path ?? 'not found' }}</span>
+
+              <span class="k">Account</span>
+              <span class="v mono">{{ result.auth.email ?? '—' }}</span>
+
+              <span class="k">Organization</span>
+              <span class="v">{{ result.auth.orgName ?? '—' }}</span>
+
+              <span class="k">Plan</span>
+              <span class="v">
+                {{ planLabel(result) }}
+                @if (result.auth.apiKeySource && result.auth.apiKeySource !== 'none') {
+                  <span class="badge">API key: {{ result.auth.apiKeySource }}</span>
+                }
+              </span>
+
+              <span class="k">Auth method</span>
+              <span class="v">
+                @if (result.auth.known) {
+                  {{ result.auth.authMethod ?? '—' }}
+                } @else {
+                  {{ result.auth.unknownReason }}
+                }
+              </span>
+
+              <span class="k">Model used</span>
+              <span class="v mono">
+                {{ result.probe.servedModel ?? '—' }}
+                @if (result.probe.servedContextWindow) {
+                  <span class="badge">{{ formatTokens(result.probe.servedContextWindow) }} ctx</span>
+                }
+              </span>
+
+              <span class="k">Beyond plan</span>
+              <span class="v">
+                {{ overageLabel(result) }}
+                @if (resetsAtLabel(result); as resets) {
+                  <span class="hint">window resets {{ resets }}</span>
+                }
+              </span>
+            </div>
+
+            @if (result.probe.modelMismatch) {
+              <div class="callout warn result-note">
+                The CLI served a different model than it announced. Check the model list.
+              </div>
+            }
+            @for (warning of result.versionWarnings; track warning) {
+              <div class="callout warn result-note">{{ warning }}</div>
+            }
+            @if (result.error) {
+              <div class="callout danger result-note">{{ result.error }}</div>
+            }
+            @if (result.probe.errorText) {
+              <div class="callout danger result-note">{{ result.probe.errorText }}</div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label class="label executor"><span class="dot"></span>Executor — allowed tools</label>
+          <div class="chips">
+            @for (tool of settings().claudeCode.executorTools; track tool) {
+              <span class="chip">
+                {{ tool }}
+                <button type="button" (click)="removeChip('executorTools', tool)" aria-label="Remove">×</button>
+              </span>
+            }
+            <input
+              class="chip-input mono"
+              placeholder="+ add"
+              [value]="toolDraft()"
+              (input)="toolDraft.set($any($event.target).value)"
+              (keydown.enter)="addChip('executorTools')"
+              (blur)="addChip('executorTools')"
+            />
+          </div>
+          <span class="hint">
+            Passed as both <span class="mono">--tools</span> (the real restriction) and
+            <span class="mono">--allowedTools</span> (auto-approval).
+          </span>
+        </div>
+
+        <div class="field">
+          <label class="label">Executor — disallowed tools</label>
+          <div class="chips">
+            @for (tool of settings().claudeCode.executorDisallowedTools; track tool) {
+              <span class="chip deny">
+                {{ tool }}
+                <button type="button" (click)="removeChip('executorDisallowedTools', tool)" aria-label="Remove">×</button>
+              </span>
+            }
+            <input
+              class="chip-input mono"
+              placeholder="+ add"
+              [value]="denyDraft()"
+              (input)="denyDraft.set($any($event.target).value)"
+              (keydown.enter)="addChip('executorDisallowedTools')"
+              (blur)="addChip('executorDisallowedTools')"
+            />
+          </div>
+          <span class="hint mono">--disallowedTools</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label">Permission mode</label>
+        <div class="radio-list">
+          @for (mode of permissionModes; track mode.id) {
+            <button
+              type="button"
+              [attr.aria-pressed]="settings().claudeCode.permissionMode === mode.id"
+              (click)="setPermissionMode(mode.id)"
+            >
+              <span class="radio-mark"></span>
+              <span class="radio-body">
+                <span class="row-title">{{ mode.label }}</span>
+                <span class="row-sub mono">{{ mode.hint }}</span>
+                @if (mode.id === 'bypassPermissions' && settings().claudeCode.permissionMode === 'bypassPermissions') {
+                  <span class="callout danger">
+                    <strong>Unsafe.</strong> The Executor can run any command, including destructive ones, without
+                    asking. Only use inside a disposable VM or container with no production credentials.
+                  </span>
+                }
+              </span>
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="row-text">
+            <span class="row-title">Allow API key billing</span>
+            <span class="row-sub">
+              Off: every <span class="mono">ANTHROPIC_*</span> variable is stripped, so a stray key cannot switch
+              billing away from the subscription.
+            </span>
+          </div>
+          <button
+            type="button"
+            class="toggle"
+            [attr.aria-pressed]="settings().claudeCode.allowApiKeyBilling"
+            (click)="toggleApiKeyBilling()"
+          >
+            <span></span>
+          </button>
+        </div>
+        <div class="row">
+          <div class="row-text">
+            <span class="row-title">API retry limit</span>
+            <span class="row-sub mono">CLAUDE_CODE_MAX_RETRIES — advanced; blank leaves the CLI default (10).</span>
+          </div>
+          <input
+            class="input mono narrow"
+            type="number"
+            min="0"
+            max="10"
+            placeholder="default"
+            [value]="settings().claudeCode.maxRetries ?? ''"
+            (input)="setMaxRetries($any($event.target).value)"
+          />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label planner"><span class="dot"></span>Planner — isolated working folder</label>
+        <div class="input mono path">
+          {{ store.appInfo()?.paths?.tasksFolder ?? '…' }}\&lt;task-id&gt;\planner-cwd
+        </div>
+        <span class="hint">
+          Created per task and kept for its lifetime — <span class="mono">--resume</span> only finds a session from
+          the same working directory, so this is not configurable.
+        </span>
+      </div>
+    }
+
+    <!-- ─────────────────────────────── About ─────────────────────────────── -->
+    @if (aboutPage()) {
+      @let info = store.appInfo();
+      <div class="about-head">
+        <app-mark [size]="48" />
+        <div>
+          <h1>{{ appName }}</h1>
+          <p class="sub">{{ tagline }}</p>
+        </div>
+      </div>
+
+      <p class="about-text">
+        {{ appName }} runs a task as a loop between two Claude Code sessions on this computer. A Planner reads the
+        task, decides the next step and reviews each result, without touching any files. An Executor carries out one
+        step at a time in the project folder and reports back what it changed and what it ran. The app keeps the
+        limits and checkpoints in between — cycle caps, timeouts, commits, account checks — and stops to ask you
+        whenever a decision is yours.
+      </p>
+
+      <p class="about-text">
+        It needs <b>Claude Code</b> installed and signed in on this computer, and it runs every turn through that
+        CLI — so the work goes on your own Claude subscription, at your own account's limits. {{ appName }} does
+        not talk to the API itself and has no account or billing of its own.
+      </p>
+
+      <div class="field">
+        <label class="label">Versions</label>
+        <div class="card">
+          <div class="kv">
+            <span class="k">{{ appName }}</span>
+            <span class="v mono">{{ info?.appVersion ?? '…' }}</span>
+
+            <span class="k">Electron</span>
+            <span class="v mono">{{ info?.electronVersion ?? '…' }}</span>
+
+            <span class="k">Chromium</span>
+            <span class="v mono">{{ info?.chromeVersion ?? '…' }}</span>
+
+            <span class="k">Claude Code CLI</span>
+            <span class="v">
+              @if (cli(); as c) {
+                @if (c.cliVersion) {
+                  <span class="mono">{{ c.cliVersion }}</span>
+                } @else {
+                  <span class="muted">not detected{{ c.error ? ' — ' + c.error : '' }}</span>
+                }
+                @if (c.cliPath) {
+                  <span class="mono path-line" [title]="c.cliPath">{{ c.cliPath }}</span>
+                }
+              } @else {
+                <span class="muted">checking…</span>
+              }
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label">Developer</label>
+        <span>
+          {{ developer.name }} —
+          <a class="link" [href]="'mailto:' + developer.email" (click)="mailDeveloper($event)">{{ developer.email }}</a>
+        </span>
+        <span>
+          Open source —
+          <a class="link" [href]="repoUrl" (click)="openLink($event, repoUrl)">source code</a>
+          ·
+          <a class="link" [href]="issuesUrl" (click)="openLink($event, issuesUrl)">report a problem</a>
+        </span>
+        <span class="hint">{{ copyright }}</span>
+      </div>
+
+      <div class="field">
+        <div class="row-controls">
+          <button type="button" class="btn" (click)="copyDiagnostics()">Copy diagnostics</button>
+          @if (copyState(); as state) {
+            <span class="hint" [class.copy-error]="!state.ok">{{ state.text }}</span>
+          }
+        </div>
+        <span class="hint">
+          Version numbers, the data folder and where its files really land, and the Claude Code CLI that would run —
+          for a bug report. No task content and no account details are included.
+        </span>
+      </div>
+
+      <p class="built-with">
+        Built with open-source software —
+        <button type="button" class="link" (click)="openLicenses()">view licenses</button>
+      </p>
+    }
+
+    <!-- ─────────────── About → Third-party licenses (its own page) ─────────────── -->
+    @if (licensesPage()) {
+      @let info = store.appInfo();
+      <div>
+        <button type="button" class="page-back" (click)="closeLicenses()">← About</button>
+        <h1>Third-party licenses</h1>
+        <p class="sub">
+          Every package that ships inside {{ appName }} — {{ licenses.length }} in all, generated from the
+          installed packages.
+          @if (info?.paths?.chromiumLicenses; as notices) {
+            Chromium's and Node.js's own notices ship with Electron:
+            <button type="button" class="link" (click)="openChromiumNotices(notices)">LICENSES.chromium.html</button>.
+          } @else {
+            Chromium's and Node.js's own notices ship with Electron as LICENSES.chromium.html.
+          }
+        </p>
+      </div>
+
+      <div class="licenses">
+        @for (pkg of licenses; track pkg.name + '@' + pkg.version) {
+          <details class="pkg">
+            <summary>
+              <span class="mono">{{ pkg.name }}</span>
+              <span class="mono muted">{{ pkg.version }}</span>
+              <span class="badge">{{ pkg.license }}</span>
+            </summary>
+            <div class="pkg-body">
+              @for (line of pkg.copyright; track line) {
+                <div>{{ line }}</div>
+              } @empty {
+                @if (pkg.author) {
+                  <div>Author: {{ pkg.author }}</div>
+                }
+              }
+              <div class="hint">Used by: {{ usedBy(pkg) }}@if (pkg.homepage) { · <span class="mono">{{ pkg.homepage }}</span>}</div>
+              @if (pkg.text) {
+                <pre>{{ pkg.text }}</pre>
+              } @else {
+                <div class="hint">This package ships no license file; its package.json declares {{ pkg.license }}.</div>
+              }
+            </div>
+          </details>
+        }
+      </div>
+    }
+  </app-content-pane>
+
+  @if (section() !== 'about' || store.dirty()) {
+  <footer class="save-bar">
+    <div class="content-column save-bar-inner">
+      <span class="hint">
+        @if (store.dirty()) {
+          Unsaved changes
+        } @else if (store.savedAt(); as at) {
+          Saved {{ at.toLocaleTimeString() }}
+        } @else {
+          {{ store.appInfo()?.paths?.settingsFile }}
+        }
+      </span>
+      <button type="button" class="btn" [disabled]="!store.dirty() || store.saving()" (click)="store.revert()">
+        Revert
+      </button>
+      <button type="button" class="btn btn-accent" [disabled]="!store.dirty() || store.saving() || saveBlocked()" (click)="save()">
+        {{ store.saving() ? 'Saving…' : 'Save changes' }}
+      </button>
+    </div>
+  </footer>
+  }
+</section>

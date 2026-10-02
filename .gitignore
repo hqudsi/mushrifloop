@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.angular/
+release/
+.electron-cache/
+*.log
+.env*
+.vscode/
+.claude/

@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PlannerOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "reasoning_summary"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "continue",
+        "done",
+        "blocked",
+        "needs_user",
+        "plan_ready"
+      ]
+    },
+    "reasoning_summary": {
+      "type": "string",
+      "description": "2-5 sentences: what the planner concluded from the last executor report and why it chose this status."
+    },
+    "next_instruction": {
+      "type": "string",
+      "description": "Required when status=continue. One self-contained instruction for the executor. Include acceptance criteria."
+    },
+    "question": {
+      "type": "string",
+      "description": "Required when status=needs_user or blocked. The exact question for the human. For plan_ready, the full plan text."
+    },
+    "final_report": {
+      "type": "string",
+      "description": "Required when status=done. What was accomplished, what was verified, what remains (if anything)."
+    },
+    "use_skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "A LIST of skill names the executor must invoke before doing this instruction, for example [\"code-review\"]. Empty list or absent when none are needed."
+    },
+    "request_executor_rollover": {
+      "type": "boolean",
+      "description": "Set true if the executor seems to be drifting or repeating; the orchestrator will restart it from a handoff summary."
+    }
+  }
+}
