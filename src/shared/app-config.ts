@@ -9,7 +9,7 @@
 export const APP_NAME = 'MushrifLoop';
 
 /** One line under the name in Settings → About (SPEC.md §11). */
-export const APP_TAGLINE = 'A supervised Planner–Executor loop over Claude Code.';
+export const APP_TAGLINE = 'A supervised Planner–Executor orchestrator for Claude Code.';
 
 /** Settings → About (SPEC.md §11). */
 export const APP_DEVELOPER = { name: 'Hani Qudsi', email: 'hani.a.qudsi@gmail.com' } as const;

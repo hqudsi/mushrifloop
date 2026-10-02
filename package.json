@@ -2,7 +2,7 @@
   "name": "mushrifloop",
   "version": "1.3.0",
   "private": true,
-  "description": "Supervised two-agent loop (Planner + Executor) over the Claude Code CLI.",
+  "description": "A supervised two-agent orchestrator (Planner + Executor) for the Claude Code CLI.",
   "author": "Hani Qudsi",
   "license": "Apache-2.0",
   "homepage": "https://github.com/hqudsi/mushrifloop",
