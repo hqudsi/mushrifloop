@@ -248,6 +248,14 @@ h1 .e {
   height: auto;
   display: block;
   overflow: visible;
+  --gate: #7a4fe0;
+  --cycle: 10s;
+  --begin: 2.8s;
+}
+@media (prefers-color-scheme: dark) {
+  .loop {
+    --gate: #a78bfa;
+  }
 }
 .loop .ring {
   fill: none;
@@ -271,36 +279,80 @@ h1 .e {
   stroke: var(--executor);
   animation-delay: 1.3s;
 }
-.loop .node rect {
+.loop text {
+  font-family: var(--sans);
+}
+.loop .flow {
+  font-size: 12.5px;
+  fill: var(--ink-2);
+}
+/* A node: its body, the coloured bar clipped to the rounded shape, and the frame drawn last, whole. */
+.loop .node .body {
   fill: var(--card);
+}
+.loop .node .edge {
+  fill: none;
   stroke: var(--ink);
   stroke-width: 1.5;
+  animation: var(--cycle) var(--begin) infinite;
 }
-.loop .node .bar {
-  stroke: none;
+.loop .node.planner .edge {
+  animation-name: planner-lit;
 }
-.loop .node text {
-  fill: var(--ink);
-  font-family: var(--sans);
+.loop .node.executor .edge {
+  animation-name: executor-lit;
 }
 .loop .node .name {
   font-size: 19px;
   font-weight: 580;
+  fill: var(--ink);
 }
 .loop .node .does {
   font-size: 12.5px;
   fill: var(--ink-2);
 }
-.loop .gate rect {
-  fill: var(--paper);
+/* A checkpoint: a badge on the track. It fills when the token waits under it. */
+.loop .gate .pill {
+  fill: var(--card);
   stroke: var(--ink);
   stroke-width: 1.5;
+  animation: var(--cycle) var(--begin) infinite;
 }
-.loop .gate text,
-.loop .flow {
-  font-family: var(--sans);
+.loop .gate text {
   font-size: 12.5px;
-  fill: var(--ink-2);
+  fill: var(--ink);
+  animation: var(--cycle) var(--begin) infinite;
+}
+.loop .gate .icon {
+  fill: none;
+  stroke: var(--gate);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: var(--cycle) var(--begin) infinite;
+}
+.loop .gate .pupil {
+  fill: var(--gate);
+  animation: var(--cycle) var(--begin) infinite;
+}
+.loop .gate.approval .pill {
+  animation-name: approval-pill;
+}
+.loop .gate.approval text {
+  animation-name: approval-ink;
+}
+.loop .gate.approval .icon {
+  animation-name: approval-icon;
+}
+.loop .gate.review .pill {
+  animation-name: review-pill;
+}
+.loop .gate.review text,
+.loop .gate.review .pupil {
+  animation-name: review-ink;
+}
+.loop .gate.review .icon {
+  animation-name: review-icon;
 }
 .loop .hub circle {
   fill: var(--card);
@@ -308,18 +360,55 @@ h1 .e {
   stroke-width: 1.5;
 }
 .loop .hub text {
-  font-family: var(--sans);
   font-size: 12.5px;
   fill: var(--ink-2);
   text-anchor: middle;
-}
-.loop .token {
-  fill: var(--ink);
 }
 @keyframes draw {
   to {
     stroke-dashoffset: 0;
   }
+}
+/* One cycle: the Planner 0–8 %, your approval 26–36 %, the Executor 50–58 %, the review 74–84 %. */
+@keyframes planner-lit {
+  0%, 8% { stroke: var(--planner); stroke-width: 3.5; }
+  15%, 93% { stroke: var(--ink); stroke-width: 1.5; }
+  100% { stroke: var(--planner); stroke-width: 3.5; }
+}
+@keyframes executor-lit {
+  0%, 44% { stroke: var(--ink); stroke-width: 1.5; }
+  50%, 58% { stroke: var(--executor); stroke-width: 3.5; }
+  65%, 100% { stroke: var(--ink); stroke-width: 1.5; }
+}
+@keyframes approval-pill {
+  0%, 25% { fill: var(--card); stroke: var(--ink); }
+  28%, 36% { fill: var(--gate); stroke: var(--gate); }
+  43%, 100% { fill: var(--card); stroke: var(--ink); }
+}
+@keyframes approval-ink {
+  0%, 25% { fill: var(--ink); }
+  28%, 36% { fill: var(--paper); }
+  43%, 100% { fill: var(--ink); }
+}
+@keyframes approval-icon {
+  0%, 25% { stroke: var(--gate); }
+  28%, 36% { stroke: var(--paper); }
+  43%, 100% { stroke: var(--gate); }
+}
+@keyframes review-pill {
+  0%, 73% { fill: var(--card); stroke: var(--ink); }
+  76%, 84% { fill: var(--gate); stroke: var(--gate); }
+  91%, 100% { fill: var(--card); stroke: var(--ink); }
+}
+@keyframes review-ink {
+  0%, 73% { fill: var(--ink); }
+  76%, 84% { fill: var(--paper); }
+  91%, 100% { fill: var(--ink); }
+}
+@keyframes review-icon {
+  0%, 73% { stroke: var(--gate); }
+  76%, 84% { stroke: var(--paper); }
+  91%, 100% { stroke: var(--gate); }
 }
 
 /* ── sections ────────────────────────────────────────────── */
@@ -624,6 +713,13 @@ footer p {
     opacity: 1;
     transform: none;
     stroke-dashoffset: 0;
+  }
+  .loop .node .edge,
+  .loop .gate .pill,
+  .loop .gate text,
+  .loop .gate .icon,
+  .loop .gate .pupil {
+    animation: none;
   }
   .loop .token {
     display: none;
