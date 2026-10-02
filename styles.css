@@ -639,8 +639,38 @@ code {
 .tab:hover {
   border-color: var(--ink-2);
 }
+/* The chosen item's mark lies over its border. While the screens take turns (site.js sets .auto) the mark fills
+   in six seconds, and its end is what brings the next screen; the pointer over the screens holds it. */
+.tab::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -3px;
+  width: 3px;
+  background: var(--planner);
+  transform: scaleY(0);
+  transform-origin: top;
+}
+.tab:has(input:checked)::before {
+  transform: scaleY(1);
+}
+.tour.auto .tab:has(input:checked)::before {
+  animation: turn 6s linear both;
+}
+@keyframes turn {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@media (hover: hover) {
+  .tour.auto:hover .tab:has(input:checked)::before {
+    animation-play-state: paused;
+  }
+}
 .tab:has(input:checked) {
-  border-color: var(--planner);
   background: var(--card);
   box-shadow: var(--shadow);
   border-start-end-radius: 12px;
@@ -675,6 +705,13 @@ code {
   width: var(--z, 100%);
   left: var(--x, 0);
   top: var(--y, 0);
+  /* A picture that has just been shown (another screen, or the other theme) fades in. */
+  animation: shown 0.45s ease both;
+}
+@keyframes shown {
+  from {
+    opacity: 0;
+  }
 }
 .tour:has(#tour-1:checked) .f1,
 .tour:has(#tour-2:checked) .f2,
@@ -838,7 +875,8 @@ footer p {
   .loop .gate .pill,
   .loop .gate text,
   .loop .gate .icon,
-  .loop .gate .pupil {
+  .loop .gate .pupil,
+  .frame img {
     animation: none;
   }
   .loop .token {
