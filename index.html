@@ -194,22 +194,23 @@
           <div>
             <p class="kicker">Plainly</p>
             <h2>What it costs.</h2>
-            <p class="sub">It depends on the size of the task, and on what you compare it with.</p>
+            <p class="sub">It depends on the size of the task, on the models, and on what you compare it with.</p>
           </div>
           <div class="box">
             <p>
-              In our first measurements, with the Planner on Opus and the Executor on Sonnet, small and medium tasks cost about a quarter
-              less than a plain Opus session. Large tasks cost a little over twice as much.
+              Version 1.4.0 runs the Planner on Opus 5.5 and the Executor on Sonnet 5.5, both at medium effort, and fixes two things that
+              made large tasks expensive. On three large tasks every hidden test passed, at about half to 0.6 times the cost of a plain
+              Opus session, and in less time. The plain Opus runs were measured earlier, on an older Claude Code.
             </p>
             <p>
-              Against a plain Sonnet session it cost more at every size. The Planner is the small part of the bill: about 6% on large
-              tasks.
+              Version 1.3.0, with the Executor on Sonnet 5 at high effort, cost about a quarter less than plain Opus on small and medium
+              tasks, and a little over twice as much on large ones, taking nearly twice as long. The Planner is the small part of the
+              bill: about 6% on large tasks.
             </p>
             <p>
-              It takes longer than a plain session, nearly twice as long on large tasks, but it does not need you while it runs. The three
-              finished the medium and large tasks equally well.
+              Early numbers, one run per task. A full comparison, with the plain sessions run again on the same Claude Code version, will
+              be published here, whatever it says.
             </p>
-            <p>Early numbers: 22 tasks, one run each. The full benchmark is under way and will be published here, whatever it says.</p>
           </div>
         </div>
       </section>
