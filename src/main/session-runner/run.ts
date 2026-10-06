@@ -17,6 +17,7 @@ import { killTree } from '../claude-cli';
 import { errorMessage, log } from '../logger';
 import { unguarded, type PreparedGuard, type ProcessCleanupReport, type TurnProcessGuard } from '../process-guard';
 import type { SchemaRegistry } from '../schema-validator';
+import { takeAnswerFile } from './answer-file';
 import { buildTurnArgs } from './args';
 import { classifyTurn, type ProcessFacts } from './classify';
 import { LineSplitter, TurnAccumulator } from './stream';
@@ -122,7 +123,8 @@ export async function runTurn<T = unknown>(
   };
   const finish = (): TurnOutcome<T> => {
     identity.durationMs = Date.now() - startedAt.getTime();
-    return classifyTurn(identity, accumulator, facts, schemas) as TurnOutcome<T>;
+    const outcome = classifyTurn(identity, accumulator, facts, schemas) as TurnOutcome<T>;
+    return spec.answerFile ? takeAnswerFile(outcome, spec.answerFile, schemas) : outcome;
   };
 
   // A missing cwd makes spawn fail with a misleading "binary not found" — say what is really wrong.

@@ -12,6 +12,7 @@ import {
   DEFAULT_PLANNER_MODEL,
   coerceEffort,
   getModel,
+  isEffortValid,
   type EffortLevel,
 } from './models';
 
@@ -128,10 +129,17 @@ export const APPROVAL_MODES: readonly { id: ApprovalMode; label: string; hint: s
 export const SETTINGS_VERSION = 1 as const;
 
 /** The current defaults revision: one more whenever a release changes a default (SPEC.md §11). */
-export const DEFAULTS_REVISION = 2;
+export const DEFAULTS_REVISION = 3;
 
 /** A setting a defaults change can touch. Only Task defaults have changed so far. */
-export type DefaultChangeField = 'maxCycles' | 'turnTimeoutMinutes' | 'slowTurnWarningMinutes' | 'maxTurnsPerSession' | 'plannerContextMode';
+export type DefaultChangeField =
+  | 'maxCycles'
+  | 'turnTimeoutMinutes'
+  | 'slowTurnWarningMinutes'
+  | 'maxTurnsPerSession'
+  | 'plannerContextMode'
+  | 'plannerEffort'
+  | 'executorEffort';
 export type DefaultValue = number | string;
 
 export interface DefaultChange {
@@ -153,7 +161,15 @@ export const DEFAULT_CHANGES: readonly DefaultChange[] = [
   { revision: 2, field: 'slowTurnWarningMinutes', label: 'Slow-turn warning', from: 5, to: 30 },
   { revision: 2, field: 'maxTurnsPerSession', label: 'Max steps per turn', from: 40, to: 80 },
   { revision: 2, field: 'plannerContextMode', label: 'Planner context mode', from: 'isolated', to: 'read_only' },
+  { revision: 3, field: 'plannerEffort', label: 'Planner effort', from: 'xhigh', to: 'medium' },
+  { revision: 3, field: 'executorEffort', label: 'Executor effort', from: 'high', to: 'medium' },
 ];
+
+/** The model an effort field belongs to: an effort change is offered only where that model takes it. */
+const EFFORT_MODEL: Partial<Record<DefaultChangeField, 'plannerModel' | 'executorModel'>> = {
+  plannerEffort: 'plannerModel',
+  executorEffort: 'executorModel',
+};
 
 /** "Fresh Executor session after N turns with rejected answers" (SPEC.md §15): N when switched on, and its range. */
 export const FRESH_EXECUTOR_DEFAULT_TURNS = 2;
@@ -385,7 +401,9 @@ export function pendingDefaultChanges(settings: Settings): PendingDefaultChange[
   const oldValues = new Map<DefaultChangeField, DefaultValue[]>();
   for (const change of DEFAULT_CHANGES) {
     if (change.revision <= settings.defaultsRevision) continue;
-    const current = settings.taskDefaults[change.field];
+    const modelField = EFFORT_MODEL[change.field];
+    if (modelField && !isEffortValid(settings.taskDefaults[modelField], change.to as EffortLevel)) continue;
+    const current = settings.taskDefaults[change.field] ?? '';
     const seen = byField.get(change.field);
     oldValues.set(change.field, [...(oldValues.get(change.field) ?? []), change.from]);
     byField.set(change.field, { field: change.field, label: change.label, from: seen?.from ?? change.from, to: change.to, current, suggested: false });

@@ -83,6 +83,13 @@ export function executorSystemPrompt(role: string, task: TaskRecord): string {
   const parts = [role.trimEnd()];
   const standing = task.config.standingInstructions.executor.trim();
   if (standing) parts.push(`## Standing instructions\n\n${standing}`);
+  // SPEC.md §3.1 (2026-10-06): without it the Executor could not find the contract an instruction pointed at.
+  parts.push(
+    '## The task (for reference)\n\n' +
+      'This is the whole task the planner is working through, so you can read names, contracts and acceptance criteria from it. ' +
+      'It is not your instruction: each turn, do exactly what the [INSTRUCTION] asks and nothing more, even when you can see what comes next.\n\n' +
+      task.description.trim(),
+  );
   return parts.join('\n\n') + '\n';
 }
 
@@ -362,6 +369,25 @@ export function handoffRequest(shorter = false): string {
   return shorter
     ? `${base} Your last summary was refused, so keep this one small: at most four items per list, one short sentence each, at most five key_files, no pasted code and no long quotations. A short summary that arrives beats a complete one that does not.`
     : `${base} If the tool refuses your answer, send the same content again with every list as a list; do not shorten it.`;
+}
+
+/**
+ * SPEC.md §15 (2026-10-06): the Executor's handoff goes into a file, so the turn keeps the Executor's own
+ * `--json-schema` and its whole context stays in the prompt cache. `file` is relative to the project root.
+ */
+export function handoffFileRequest(file: string, shorter = false): string {
+  const base =
+    '[ORCHESTRATOR] This session is being replaced by a fresh one to free context. Do not continue the task. ' +
+    `Write a handoff summary for your successor as one JSON object, with the Write tool, to ${file} (create the folder if needed). Use no other tool. ` +
+    'The object has exactly these fields: task_restatement (a string: the task in your own words, with its acceptance criteria, a few sentences), ' +
+    'and done_so_far, remaining, decisions, constraints, open_problems and key_files — each a LIST of short strings, one point per item, never a paragraph. ' +
+    'For example: "done_so_far": ["Fixed the SELECT in src/repositories/order-repository.ts", "Added a regression test in test/unit/order-service.test.ts"]. ' +
+    'Limits: task_restatement at most 1,500 characters; at most 20 items per list (key_files: 10, the files a new session should read first), each at most 500 characters. ' +
+    'Write file paths with forward slashes, never backslashes, and make the file valid JSON. ' +
+    `Then answer as usual: status ok, summary "Handoff written to ${file}", an empty changed_files list, tests {"ran": false} and an empty problems list.`;
+  return shorter
+    ? `${base} Your last summary could not be used, so keep this one small: at most four items per list, one short sentence each, at most five key_files, no pasted code and no long quotations. A short summary that arrives beats a complete one that does not.`
+    : base;
 }
 
 /** SPEC.md §15: the Planner learns that the Executor's session was kept after a handoff it could not produce. */

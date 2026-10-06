@@ -90,6 +90,13 @@ afterEach(() => {
   h.cleanup();
 });
 
+/**
+ * The recording is a handoff asked for the old way, with `--json-schema` set to `handoff-summary`. Since
+ * 2026-10-06 an Executor with Write writes its handoff to a file instead (SPEC.md §15); the old way is still
+ * what an Executor without Write gets, so the replay runs on that configuration.
+ */
+const OLD_WAY = { executorTools: ['Read', 'Edit', 'Bash', 'Skill'] };
+
 describe('the real refused handoff (Step C, long-py-M-cheap-1)', () => {
   it('is read as a turn that ended without an answer, with the CLI’s five refusals', () => {
     const outcome = replayOutcome({ agent: 'executor', schema: 'handoff-summary', turnId: 't' } as TurnSpec);
@@ -114,7 +121,7 @@ describe('the real refused handoff (Step C, long-py-M-cheap-1)', () => {
       .on('executor', (spec) => replayOutcome(spec)) // the shorter request, refused too
       .executor(E.ok(['b'])) // instruction B runs in the session that was kept
       .planner(P.done());
-    const runner = await h.create();
+    const runner = await h.create(OLD_WAY);
     const sessionBefore = h.task(runner).sessions.executor.sessionId;
     await runner.start();
 
@@ -152,7 +159,7 @@ describe('the real refused handoff (Step C, long-py-M-cheap-1)', () => {
       .planner(P.cont('C'))
       .executor(E.ok(['c'])) // no third handoff before this one
       .planner(P.done());
-    const runner = await h.create();
+    const runner = await h.create(OLD_WAY);
     await runner.start();
     expect(h.specs.filter((s) => s.schema === 'handoff-summary')).toHaveLength(2);
     expect(h.task(runner).status).toBe('done');

@@ -59,7 +59,7 @@ export const FALLBACK_AUTO_COMPACT_THRESHOLD = 167_000;
  * verified against. Some models need a newer one: see their `minCliVersion` (SPEC.md §3.2, §8).
  */
 export const MIN_CLI_VERSION = '2.1.251';
-export const VERIFIED_CLI_VERSION = '2.1.280';
+export const VERIFIED_CLI_VERSION = '2.1.291';
 
 /**
  * Fable 5.1 needs this CLI (SPEC.md §3.2, decided 2026-09-26). The "Model configuration" docs give 2.1.257; the
@@ -71,6 +71,12 @@ export const FABLE_5_1_MIN_CLI_VERSION = '2.1.257';
 export const OPUS_5_5_MIN_CLI_VERSION = '2.1.280';
 
 /**
+ * Sonnet 5.5 needs this CLI, and from it `sonnet` resolves to Sonnet 5.5 (SPEC.md §8, added 2026-10-06; the
+ * "Model configuration" docs and a real call on 2.1.291, NOTES.md §58.8).
+ */
+export const SONNET_5_5_MIN_CLI_VERSION = '2.1.284';
+
+/**
  * What an alias resolves to, by installed CLI version (SPEC.md §8). Each entry applies from `fromCli` until the
  * next one. Verified on 2.1.280 (2026-09-22) with the CLI's own model list and a real call; `opus` meant Opus 5
  * from 2.1.219 until then.
@@ -80,7 +86,10 @@ export const ALIAS_RESOLUTION: Readonly<Record<string, readonly { fromCli: strin
     { fromCli: '0', model: 'claude-opus-5' },
     { fromCli: OPUS_5_5_MIN_CLI_VERSION, model: 'claude-opus-5-5' },
   ],
-  sonnet: [{ fromCli: '0', model: 'claude-sonnet-5' }],
+  sonnet: [
+    { fromCli: '0', model: 'claude-sonnet-5' },
+    { fromCli: SONNET_5_5_MIN_CLI_VERSION, model: 'claude-sonnet-5-5' },
+  ],
   haiku: [{ fromCli: '0', model: 'claude-haiku-4-5' }],
 };
 
@@ -93,6 +102,7 @@ const MODEL_NAMES: Readonly<Record<string, string>> = {
   'claude-fable-5': 'Fable 5',
   'claude-opus-5-5': 'Opus 5.5',
   'claude-opus-5': 'Opus 5',
+  'claude-sonnet-5-5': 'Sonnet 5.5',
   'claude-sonnet-5': 'Sonnet 5',
   'claude-opus-4-8': 'Opus 4.8',
   'claude-opus-4-7': 'Opus 4.7',
@@ -138,9 +148,19 @@ export const MODELS: readonly ModelSpec[] = [
     defaultEffort: 'medium',
     minCliVersion: OPUS_5_5_MIN_CLI_VERSION,
   },
+  {
+    id: 'claude-sonnet-5-5',
+    label: 'Sonnet 5.5',
+    efforts: ALL_EFFORTS,
+    contextWindow: 1_000_000,
+    autoCompactThreshold: 967_000,
+    servedAs: 'claude-sonnet-5-5',
+    defaultEffort: 'medium',
+    minCliVersion: SONNET_5_5_MIN_CLI_VERSION,
+  },
   { ...model('opus', 'Opus', ALL_EFFORTS, 1_000_000, 967_000, 'claude-opus-5-5'), isAlias: true },
   model('claude-opus-5', 'Opus 5', ALL_EFFORTS, 1_000_000, 967_000),
-  { ...model('sonnet', 'Sonnet', ALL_EFFORTS, 1_000_000, 967_000, 'claude-sonnet-5'), isAlias: true },
+  { ...model('sonnet', 'Sonnet', ALL_EFFORTS, 1_000_000, 967_000, 'claude-sonnet-5-5'), isAlias: true },
   model('claude-opus-4-8', 'Opus 4.8', ALL_EFFORTS, 1_000_000, 967_000),
   model('claude-opus-4-7', 'Opus 4.7', ALL_EFFORTS, 1_000_000, 967_000),
   model('claude-opus-4-6', 'Opus 4.6', NO_XHIGH, 200_000, 167_000),
@@ -155,9 +175,10 @@ export const MODELS: readonly ModelSpec[] = [
 export const PICKER_MODELS: readonly ModelSpec[] = [...MODELS.filter((m) => m.isAlias), ...MODELS.filter((m) => !m.isAlias)];
 
 export const DEFAULT_PLANNER_MODEL = 'opus';
-export const DEFAULT_PLANNER_EFFORT: EffortLevel = 'xhigh';
+// SPEC.md §8: medium for both since 2026-10-06 (settings files are offered it as defaults revision 3).
+export const DEFAULT_PLANNER_EFFORT: EffortLevel = 'medium';
 export const DEFAULT_EXECUTOR_MODEL = 'sonnet';
-export const DEFAULT_EXECUTOR_EFFORT: EffortLevel = 'high';
+export const DEFAULT_EXECUTOR_EFFORT: EffortLevel = 'medium';
 
 export function getModel(id: string): ModelSpec | undefined {
   return MODELS.find((m) => m.id === id);

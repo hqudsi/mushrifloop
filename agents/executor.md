@@ -23,6 +23,6 @@ How to answer:
 - List every file you added, modified, or deleted in changed_files.
 - Never claim tests passed unless you ran them in this turn.
 
-When you are asked for a handoff summary, answer the same way, with the handoff fields instead, each as its own field; a new session will continue from it. task_restatement is plain text. done_so_far, remaining, decisions, constraints, open_problems and key_files are each a **list of short strings** — one point per item, never a paragraph:
+When you are asked for a handoff summary, a new session will continue from it. The request says where it goes: usually into a JSON file that you write with the Write tool, followed by your usual answer; otherwise as your answer itself, with the handoff fields instead of the usual ones, each as its own field. task_restatement is plain text. done_so_far, remaining, decisions, constraints, open_problems and key_files are each a **list of short strings** — one point per item, never a paragraph:
 
     "done_so_far": ["Fixed the SELECT in src/repositories/order-repository.ts", "Added a regression test in test/unit/order-service.test.ts"]

@@ -17,7 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('electron', () => ({ app: { getPath: () => os.tmpdir() } }));
 
 const { SchemaRegistry, SCHEMA_KINDS } = await import('../schema-validator');
-const { handoffRequest } = await import('./prompts');
+const { handoffFileRequest, handoffRequest } = await import('./prompts');
 
 import type { SchemaKind } from '../schema-validator';
 
@@ -72,6 +72,38 @@ describe('the handoff request agrees with the handoff schema', () => {
 
   it('shows the expected form once, as an example', () => {
     expect(handoffRequest(false)).toMatch(/"done_so_far":\s*\[/);
+  });
+
+  describe('the Executor’s handoff by file (SPEC.md §15, 2026-10-06)', () => {
+    const file = '.mushrifloop/handoff/executor-1.json';
+
+    for (const shorter of [false, true]) {
+      it(`names every field, calls the lists lists and gives the file (${shorter ? 'shorter retry' : 'first attempt'})`, () => {
+        const text = handoffFileRequest(file, shorter);
+        expect(text).toContain('task_restatement');
+        for (const field of lists) expect(text, `handoffFileRequest(${shorter}) does not mention ${field}`).toContain(field);
+        expect(text).toMatch(/\bLIST\b/);
+        expect(text).toContain(`with the Write tool, to ${file}`);
+        expect(text).not.toMatch(/plain text in each field/i);
+      });
+    }
+
+    it('states the schema’s own limits, so a file the prompt allows is never refused', () => {
+      const schema = schemas.get('handoff-summary').schema as {
+        properties: Record<string, { maxLength?: number; maxItems?: number; items?: { maxLength?: number } }>;
+      };
+      const text = handoffFileRequest(file);
+      expect(text).toContain(`task_restatement at most ${schema.properties['task_restatement']?.maxLength?.toLocaleString('en-US')} characters`);
+      expect(text).toContain(`at most ${schema.properties['done_so_far']?.maxItems} items per list (key_files: ${schema.properties['key_files']?.maxItems}`);
+      expect(text).toContain(`each at most ${schema.properties['done_so_far']?.items?.maxLength} characters`);
+    });
+
+    it('the answer it asks for after the file is a valid executor answer', () => {
+      const text = handoffFileRequest(file);
+      expect(text).toContain(`summary "Handoff written to ${file}"`);
+      const asked = { status: 'ok', summary: `Handoff written to ${file}`, changed_files: [], tests: { ran: false }, problems: [] };
+      expect(schemas.validate('executor-output', asked).ok).toBe(true);
+    });
   });
 });
 

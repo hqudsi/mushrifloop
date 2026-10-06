@@ -16,9 +16,9 @@ describe('default settings (SPEC.md §11)', () => {
 
   it('uses the documented agent defaults', () => {
     expect(d.taskDefaults.plannerModel).toBe('opus');
-    expect(d.taskDefaults.plannerEffort).toBe('xhigh');
+    expect(d.taskDefaults.plannerEffort).toBe('medium');
     expect(d.taskDefaults.executorModel).toBe('sonnet');
-    expect(d.taskDefaults.executorEffort).toBe('high');
+    expect(d.taskDefaults.executorEffort).toBe('medium');
   });
 
   it('uses the documented loop and approval defaults', () => {
@@ -209,20 +209,36 @@ function savedByV11(overrides: Record<string, unknown> = {}) {
   return mergeSettings({
     ...d,
     defaultsRevision: undefined,
-    taskDefaults: { ...d.taskDefaults, maxCycles: 25, turnTimeoutMinutes: 20, slowTurnWarningMinutes: 5, maxTurnsPerSession: 40, plannerContextMode: 'isolated', ...overrides },
+    taskDefaults: {
+      ...d.taskDefaults,
+      maxCycles: 25,
+      turnTimeoutMinutes: 20,
+      slowTurnWarningMinutes: 5,
+      maxTurnsPerSession: 40,
+      plannerContextMode: 'isolated',
+      plannerEffort: 'xhigh',
+      executorEffort: 'high',
+      ...overrides,
+    },
   });
+}
+
+/** A file reconciled with revision 2, before the efforts changed (SPEC.md §8, 2026-10-06). */
+function savedAtRevision2(overrides: Record<string, unknown> = {}) {
+  const d = defaultSettings();
+  return mergeSettings({ ...d, defaultsRevision: 2, taskDefaults: { ...d.taskDefaults, plannerEffort: 'xhigh', executorEffort: 'high', ...overrides } });
 }
 
 describe('defaults after an update (SPEC.md §11)', () => {
   it('counts a file without a revision as revision 1, and starts a new install at the current one', () => {
-    expect(DEFAULTS_REVISION).toBe(2);
+    expect(DEFAULTS_REVISION).toBe(3);
     expect(savedByV11().defaultsRevision).toBe(1);
     expect(defaultSettings().defaultsRevision).toBe(DEFAULTS_REVISION);
     expect(mergeSettings(undefined).defaultsRevision).toBe(DEFAULTS_REVISION);
     expect(mergeSettings({ defaultsRevision: 99 }).defaultsRevision).toBe(DEFAULTS_REVISION);
   });
 
-  it('lists revision 2 for a v1.1 file, pre-selecting what still holds the old default', () => {
+  it('lists revisions 2 and 3 for a v1.1 file, pre-selecting what still holds the old default', () => {
     const pending = pendingDefaultChanges(savedByV11({ maxCycles: 300 }));
     expect(pending.map((c) => [c.field, c.from, c.to, c.current, c.suggested])).toEqual([
       ['maxCycles', 25, 100, 300, false],
@@ -230,7 +246,22 @@ describe('defaults after an update (SPEC.md §11)', () => {
       ['slowTurnWarningMinutes', 5, 30, 5, true],
       ['maxTurnsPerSession', 40, 80, 40, true],
       ['plannerContextMode', 'isolated', 'read_only', 'isolated', true],
+      ['plannerEffort', 'xhigh', 'medium', 'xhigh', true],
+      ['executorEffort', 'high', 'medium', 'high', true],
     ]);
+  });
+
+  it('lists only revision 3 for a file reconciled with revision 2, and leaves a chosen effort unselected', () => {
+    const pending = pendingDefaultChanges(savedAtRevision2({ executorEffort: 'max' }));
+    expect(pending.map((c) => [c.field, c.from, c.to, c.current, c.suggested])).toEqual([
+      ['plannerEffort', 'xhigh', 'medium', 'xhigh', true],
+      ['executorEffort', 'high', 'medium', 'max', false],
+    ]);
+  });
+
+  it('offers no effort change for a model without effort control', () => {
+    const pending = pendingDefaultChanges(savedAtRevision2({ executorModel: 'haiku', executorEffort: null }));
+    expect(pending.map((c) => c.field)).toEqual(['plannerEffort']);
   });
 
   it('leaves out a setting that already holds the new value, and says nothing to a current file', () => {

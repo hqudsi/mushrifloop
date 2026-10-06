@@ -21,7 +21,8 @@ Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
 ## What you need
 
 - Windows 10 or 11, x64.
-- **Claude Code installed and signed in on the machine**, version 2.1.251 or newer.
+- **Claude Code installed and signed in on the machine**, version 2.1.251 or newer. The default Executor runs
+  on Sonnet 5.5 from Claude Code 2.1.284; an older version runs it on Sonnet 5.
 
 MushrifLoop never talks to the Anthropic API itself. Every turn is an ordinary `claude` process started on
 your machine, unmodified, under whoever is signed in to Claude Code. All the work runs on your own Claude
@@ -40,19 +41,28 @@ CLI is present, new enough and signed in before it lets you start.
 
 ## What it costs
 
-How much it uses depends on the size of the task, and on what you compare it with. In our first
-measurements (22 tasks, one run each, with the Planner on Opus and the Executor on Sonnet):
+How much it uses depends on the size of the task, on the models, and on what you compare it with.
 
-- **Small and medium tasks** cost about a quarter less than a plain Opus session.
-- **Large tasks** cost a little over twice as much as a plain Opus session.
-- Against a plain Sonnet session it cost more at every size: about 1.4 times on small and medium tasks, and
-  1.7 times on large ones.
-- The Planner is the small part of the cost: about 6% on large tasks. The Executor's work is the rest.
-- It takes longer than a plain session, nearly twice as long on large tasks. It does not need you while it
-  runs.
-- The three finished the medium and large tasks equally well.
+**Version 1.4.0** runs the Planner on Opus 5.5 and the Executor on Sonnet 5.5, both at medium effort. It also
+fixes two things that made large tasks expensive. On three large tasks, one run each:
 
-These are early numbers. The full benchmark is under way and will be published here, whatever it says.
+- every hidden test passed;
+- it cost about half to 0.6 times as much as a plain Opus session;
+- it finished in less time.
+
+The plain Opus runs were measured earlier, on an older Claude Code.
+
+**Version 1.3.0** ran the Executor on Sonnet 5 at high effort. Our first measurements (22 tasks, one run each):
+
+- small and medium tasks cost about a quarter less than a plain Opus session;
+- large tasks cost a little over twice as much, and took nearly twice as long;
+- against a plain Sonnet session it cost more at every size;
+- the three finished the medium and large tasks equally well.
+
+The Planner is the small part of the cost: about 6% on large tasks. The Executor's work is the rest.
+
+These are early numbers. A full comparison, with the plain sessions run again on the same Claude Code version,
+will be published here, whatever it says.
 
 ## Install
 

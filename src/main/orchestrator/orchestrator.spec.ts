@@ -9,9 +9,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { APP_SLUG } from '../../shared/app-config';
 import { ANSWER_RETRY_VARIATIONS, AUTO_RESUME_MARGIN_MS, SERVICE_RETRY_DELAY_MS, TaskCreationError, TaskRunner, TaskStateError } from './orchestrator';
 import { E, FakeGit, HANDOFF, Harness, OTHER, P, PINNED, PINNED_ACCOUNT, TEST_CONFIG, failOutcome, okOutcome, waitFor } from './__tests__/harness';
+import type { TurnSpec } from '../session-runner/types';
 import type { ExecutorStep, TaskConfig } from './types';
 
 let h: Harness;
+
+/** A handoff turn, whichever way it asks (SPEC.md §15): the Executor's goes to a file, the Planner's is its answer. */
+const isHandoff = (s: TurnSpec) => s.schema === 'handoff-summary' || s.answerFile?.schema === 'handoff-summary';
 
 beforeEach(() => {
   h = new Harness();
@@ -1122,7 +1126,7 @@ describe("changing a running task's settings (§6)", () => {
     const handoff = executorSpecs.at(-2);
     const next = executorSpecs.at(-1);
     // The session summarises itself on the model whose cache is warm.
-    expect(handoff).toMatchObject({ schema: 'handoff-summary', resumeSessionId: oldSession, model: 'sonnet', effort: 'low' });
+    expect(handoff).toMatchObject({ answerFile: { schema: 'handoff-summary' }, resumeSessionId: oldSession, model: 'sonnet', effort: 'low' });
     expect(next).toMatchObject({ model: 'claude-opus-5-5', effort: 'medium' });
     expect(next?.newSessionId).toBe(h.task(runner).sessions.executor.sessionId);
     expect(next?.newSessionId).not.toBe(oldSession);
@@ -1522,10 +1526,10 @@ describe('refused structured answers (§4, §5 net 11, decided 2026-09-17)', () 
     const runner = await h.create();
     await runner.start();
     const [, , , handoff, seeded] = h.specs;
-    expect(handoff?.schema).toBe('handoff-summary');
+    expect(handoff?.answerFile?.schema).toBe('handoff-summary');
     // The request names the fields and says which of them are lists (NOTES.md §27.6).
-    expect(handoff?.prompt).toContain('task_restatement is the only plain-text field');
-    expect(handoff?.prompt).toContain('done_so_far, remaining, decisions, constraints, open_problems and key_files are each a LIST');
+    expect(handoff?.prompt).toContain('task_restatement (a string');
+    expect(handoff?.prompt).toContain('done_so_far, remaining, decisions, constraints, open_problems and key_files — each a LIST');
     expect(seeded?.prompt).toContain('Warning: that summary was rejected 2 times by the schema check before one was accepted, and it is likely incomplete.');
     expect(h.eventsOf(runner, 'structured_output_rejected')).toMatchObject([{ agent: 'executor', purpose: 'handoff', possiblyTruncated: true }]);
     h.assertScriptDone();
@@ -1698,7 +1702,7 @@ describe('a failed handoff never kills the task (§15, decided 2026-09-18)', () 
     expect(h.eventsOf(runner, 'rollover_skipped')).toHaveLength(0);
     expect(task.sessions.executor.sessionId).not.toBe(before);
     expect(task.sessions.executor.handoffAttempts).toBe(0);
-    const handoffs = h.specs.filter((s) => s.schema === 'handoff-summary');
+    const handoffs = h.specs.filter(isHandoff);
     expect(handoffs[1]?.prompt).toContain('keep this one small');
     h.assertScriptDone();
   });
@@ -1923,7 +1927,7 @@ describe('service errors are retried once (§5 net 12, decided 2026-09-17)', () 
     h.scheduled[0]?.fn();
     await finished;
     expect(h.task(runner).status).toBe('done');
-    expect(h.specs.filter((s) => s.schema === 'handoff-summary')).toHaveLength(2);
+    expect(h.specs.filter(isHandoff)).toHaveLength(2);
     expect(h.eventsOf(runner, 'rollover')).toHaveLength(1);
     expect(h.eventsOf(runner, 'service_retry').map((e) => [e.outcome, e.purpose])).toEqual([
       ['retrying', 'handoff'],
@@ -1973,7 +1977,7 @@ describe('service errors are retried once (§5 net 12, decided 2026-09-17)', () 
 
 describe('fresh Executor session after rejected answers (§15 setting, decided 2026-09-17)', () => {
   const rejected = { answerRejections: { count: 1, reasons: ["must have required property 'changed_files'"], largestAttemptChars: 200 } };
-  const schemas = () => h.specs.map((s) => (s.schema === 'handoff-summary' ? 'handoff' : s.agent));
+  const schemas = () => h.specs.map((s) => (isHandoff(s) ? 'handoff' : s.agent));
 
   it('is off by default: refusals never start a new session', async () => {
     h.planner(P.cont('A')).executor(E.ok(), rejected).planner(P.cont('B')).executor(E.ok(['b']), rejected).planner(P.cont('C')).executor(E.ok(['c']), rejected).planner(P.done());
@@ -2098,13 +2102,73 @@ describe('rollover (§15)', () => {
       'planner-output',
       'executor-output',
       'planner-output',
-      'handoff-summary',
+      'executor-output',
       'executor-output',
       'planner-output',
     ]);
+    expect(h.specs[3]?.answerFile?.schema).toBe('handoff-summary');
     expect(h.specs[4]?.prompt).toContain('[ORCHESTRATOR] You are continuing this task');
     expect(h.specs[4]?.prompt).not.toContain('The original task description');
     expect(h.specs[4]?.prompt).toContain('[INSTRUCTION]\nB');
+  });
+
+  describe('the Executor writes its handoff to a file, so its schema and its cache stay (§15, 2026-10-06)', () => {
+    const script = () =>
+      h.planner(P.cont('A')).executor(E.ok()).planner(P.cont('B', { request_executor_rollover: true })).executor(HANDOFF).executor(E.ok(['b'])).planner(P.done());
+
+    it('keeps executor-output and reads the summary from the scratch folder', async () => {
+      script();
+      const runner = await h.create();
+      await runner.start();
+      const task = h.task(runner);
+      const handoff = h.specs[3];
+      expect(handoff?.schema).toBe('executor-output');
+      expect(handoff?.resumeSessionId).toBe(h.specs[1]?.newSessionId);
+      const file = `.${APP_SLUG}/handoff/${handoff?.turnId}.json`;
+      expect(handoff?.answerFile).toEqual({ path: path.join(task.projectDir, `.${APP_SLUG}`, 'handoff', `${handoff?.turnId}.json`), schema: 'handoff-summary' });
+      expect(handoff?.prompt).toContain(`with the Write tool, to ${file}`);
+      expect(handoff?.prompt).not.toContain('structured-output tool once, with each handoff field');
+      expect(h.eventsOf(runner, 'rollover')).toMatchObject([{ agent: 'executor', summary: HANDOFF }]);
+      expect(h.specs[4]?.prompt).toContain('"task_restatement": "Write the README."');
+      h.assertScriptDone();
+    });
+
+    it('a summary the file check refuses is asked for again, shorter, like any refused answer', async () => {
+      h.planner(P.cont('A'))
+        .executor(E.ok())
+        .planner(P.cont('B', { request_executor_rollover: true }))
+        .on('executor', (spec) => failOutcome(spec, 'schema_invalid', { message: 'The handoff-summary file was not written' }))
+        .executor(HANDOFF)
+        .executor(E.ok(['b']))
+        .planner(P.done());
+      const runner = await h.create();
+      await runner.start();
+      const handoffs = h.specs.filter(isHandoff);
+      expect(handoffs).toHaveLength(2);
+      expect(handoffs[1]?.answerFile?.schema).toBe('handoff-summary');
+      expect(handoffs[1]?.prompt).toContain('keep this one small');
+      expect(handoffs[1]?.answerFile?.path).not.toBe(handoffs[0]?.answerFile?.path);
+      expect(h.eventsOf(runner, 'rollover')).toHaveLength(1);
+      h.assertScriptDone();
+    });
+
+    it('an Executor without Write hands off the old way', async () => {
+      script();
+      const runner = await h.create({ executorTools: ['Read', 'Edit', 'Bash'] });
+      await runner.start();
+      expect(h.specs[3]).toMatchObject({ schema: 'handoff-summary' });
+      expect(h.specs[3]?.answerFile).toBeUndefined();
+      expect(h.specs[3]?.prompt).toContain('Produce a handoff summary');
+      h.assertScriptDone();
+    });
+
+    it('so does one whose Write is forbidden outright', async () => {
+      script();
+      const runner = await h.create({ executorDisallowedTools: ['Write'] });
+      await runner.start();
+      expect(h.specs[3]?.schema).toBe('handoff-summary');
+      h.assertScriptDone();
+    });
   });
 
   it('honours the planner’s request_executor_rollover before the executor’s next turn', async () => {
@@ -2907,5 +2971,29 @@ describe('a Stop while Resume checks the account', () => {
     await resuming;
     expect(h.task(reloaded).status).toBe('stopped');
     expect(h.specs).toHaveLength(spawned);
+  });
+});
+
+describe('the Executor has the task text (SPEC.md §3.1, 2026-10-06)', () => {
+  it('in its system prompt, after the role, with the instruction as the scope; the Planner’s prompt is unchanged', async () => {
+    h.planner(P.cont('A')).executor(E.ok()).planner(P.done());
+    const runner = await h.create({}, 'Add a README.\nThe contract: the title is the project name.');
+    await runner.start();
+    const executor = h.specs.find((s) => s.agent === 'executor')?.systemPrompt ?? '';
+    expect(executor).toContain('## The task (for reference)');
+    expect(executor).toContain('do exactly what the [INSTRUCTION] asks and nothing more');
+    expect(executor).toContain('Add a README.\nThe contract: the title is the project name.');
+    expect(executor.indexOf('## The task (for reference)')).toBeGreaterThan(executor.indexOf('EXECUTOR'));
+    expect(h.specs.find((s) => s.agent === 'planner')?.systemPrompt).not.toContain('## The task (for reference)');
+    h.assertScriptDone();
+  });
+
+  it('a fresh session after a rollover has it again', async () => {
+    h.planner(P.cont('A')).executor(E.ok()).planner(P.cont('B', { request_executor_rollover: true })).executor(HANDOFF).executor(E.ok(['b'])).planner(P.done());
+    const runner = await h.create();
+    await runner.start();
+    expect(h.specs[4]?.newSessionId).toBe(h.task(runner).sessions.executor.sessionId);
+    expect(h.specs[4]?.systemPrompt).toContain('## The task (for reference)\n\n');
+    expect(h.specs[4]?.systemPrompt).toContain('Add a README with the project name.');
   });
 });

@@ -22,11 +22,12 @@ import { APP_SLUG } from '../../shared/app-config';
 import { getModel, isEffortValid } from '../../shared/models';
 import { FRESH_EXECUTOR_MAX_TURNS, type ApprovalMode } from '../../shared/settings';
 import { turnShareReader, type RunningTotals } from '../../shared/turn-cost';
-import { PLANNER_READ_ONLY_TOOLS } from '../session-runner/args';
+import { PLANNER_READ_ONLY_TOOLS, toolNames } from '../session-runner/args';
 import type { TurnOutcome, TurnSpec } from '../session-runner/types';
 import type { SchemaKind } from '../schema-validator';
 import { compareAccount, describeAccount, pinAccount } from './account';
 import { checkAnswer } from './answer-check';
+import { EXECUTOR_SCRATCH_DIR } from './git';
 import { isServiceError } from '../session-runner/classify';
 import {
   answerBlock,
@@ -35,6 +36,7 @@ import {
   executorPrompt,
   executorReportPrompt,
   followUpNote,
+  handoffFileRequest,
   handoffRequest,
   heldDecisionNote,
   instructionRejected,
@@ -1161,6 +1163,7 @@ export class TaskRunner {
     turnId: string,
     purpose: TurnRecord['purpose'],
     cycle: number | null,
+    answerFile?: TurnSpec['answerFile'],
   ): Promise<TurnRecord> {
     const { task, deps } = this;
     const session = task.sessions[agent];
@@ -1170,7 +1173,8 @@ export class TaskRunner {
     session.launchedWith = { ...launch };
     let outcome: TurnOutcome;
     try {
-      outcome = await deps.runTurn(this.turnSpec(agent, session, stdin, schema, turnId, controller.signal, launch));
+      const spec = this.turnSpec(agent, session, stdin, schema, turnId, controller.signal, launch);
+      outcome = await deps.runTurn(answerFile ? { ...spec, answerFile } : spec);
     } finally {
       this.controller = null;
     }
@@ -1882,7 +1886,10 @@ export class TaskRunner {
     if (this.stopRequested || this.pauseRequested) return false;
 
     const turnId = this.deps.newTurnId(agent);
-    const prompt = handoffRequest((session.handoffAttempts ?? 0) > 0);
+    const shorter = (session.handoffAttempts ?? 0) > 0;
+    // SPEC.md §15: the Executor writes its summary to a file, so --json-schema stays the same and the cache holds.
+    const file = this.executorCanWrite() && agent === 'executor' ? `${EXECUTOR_SCRATCH_DIR}/handoff/${turnId}.json` : null;
+    const prompt = file ? handoffFileRequest(file, shorter) : handoffRequest(shorter);
     this.prepareSession(agent);
     const launch = this.launchConfig(agent, 'handoff');
     this.emit({
@@ -1898,12 +1905,23 @@ export class TaskRunner {
       prompt,
     });
     this.save();
-    const record = await this.runAgentTurn(agent, prompt, 'handoff-summary', turnId, 'handoff', null);
+    const record = file
+      ? await this.runAgentTurn(agent, prompt, 'executor-output', turnId, 'handoff', null, {
+          path: path.join(task.projectDir, ...file.split('/')),
+          schema: 'handoff-summary',
+        })
+      : await this.runAgentTurn(agent, prompt, 'handoff-summary', turnId, 'handoff', null);
     if (!(await this.afterTurn(record))) return false;
     await this.processTurn(record);
     this.save();
     // Either the rollover happened, or it was skipped and the step goes ahead in the session we kept.
     return record.ok || (this.task.status === 'running' && session.rolloverRequested === null);
+  }
+
+  /** Whether the Executor may write its handoff to a file (SPEC.md §15): Write is given and not forbidden outright. */
+  private executorCanWrite(): boolean {
+    const c = this.task.config;
+    return toolNames(c.executorTools).includes('Write') && !(c.executorDisallowedTools ?? []).some((t) => t.trim() === 'Write');
   }
 
   private completeRollover(agent: AgentRole, summary: HandoffSummary, answerCheck: AnswerCheck | null): void {

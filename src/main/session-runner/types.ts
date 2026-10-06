@@ -54,6 +54,12 @@ export interface TurnSpec {
    * evaluation harness's baseline uses it (SPEC.md §19.7); the app never does.
    */
   schema: SchemaKind | null;
+  /**
+   * The turn's real answer is a JSON file the agent writes, checked against its own schema; the structured
+   * answer (`schema`) is still required but only confirms the turn ended. The Executor's handoff uses it so
+   * `--json-schema` does not change and the prompt cache holds (SPEC.md §15).
+   */
+  answerFile?: { path: string; schema: SchemaKind };
   maxTurns: number;
   /** Hard limit: the process tree is killed (SPEC.md §5.3). */
   timeoutMs: number;

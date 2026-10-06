@@ -9,6 +9,7 @@ import {
   MODELS,
   PICKER_MODELS,
   OPUS_5_5_MIN_CLI_VERSION,
+  SONNET_5_5_MIN_CLI_VERSION,
   autoCompactThresholdFor,
   coerceEffort,
   compareVersions,
@@ -34,6 +35,7 @@ describe('model → effort validity table (SPEC.md §8)', () => {
   const expected: Record<string, string[]> = {
     'claude-fable-5-1': ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-opus-5-5': ['low', 'medium', 'high', 'xhigh', 'max'],
+    'claude-sonnet-5-5': ['low', 'medium', 'high', 'xhigh', 'max'],
     opus: ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-opus-5': ['low', 'medium', 'high', 'xhigh', 'max'],
     sonnet: ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -204,9 +206,14 @@ describe('modelVersionBlock', () => {
     expect(modelsTooNewFor('2.1.251')).toEqual([
       { label: 'Fable 5.1', minimum: '2.1.257' },
       { label: 'Opus 5.5', minimum: '2.1.280' },
+      { label: 'Sonnet 5.5', minimum: '2.1.284' },
     ]);
-    expect(modelsTooNewFor('2.1.273')).toEqual([{ label: 'Opus 5.5', minimum: '2.1.280' }]);
-    expect(modelsTooNewFor('2.1.280')).toEqual([]);
+    expect(modelsTooNewFor('2.1.273')).toEqual([
+      { label: 'Opus 5.5', minimum: '2.1.280' },
+      { label: 'Sonnet 5.5', minimum: '2.1.284' },
+    ]);
+    expect(modelsTooNewFor('2.1.280')).toEqual([{ label: 'Sonnet 5.5', minimum: '2.1.284' }]);
+    expect(modelsTooNewFor('2.1.284')).toEqual([]);
   });
 
   it('treats an unreadable version as too old for a model with a minimum', () => {
@@ -293,6 +300,25 @@ describe('alias resolution by CLI version (SPEC.md §8)', () => {
     expect(resolvedModelId('haiku', '2.1.280')).toBe('claude-haiku-4-5');
     expect(isAlias('opus') && isAlias('sonnet') && isAlias('haiku')).toBe(true);
     expect(isAlias('claude-opus-5-5')).toBe(false);
+  });
+
+  it('sonnet means Sonnet 5.5 from 2.1.284, as a real call on 2.1.291 showed (NOTES.md §58.8)', () => {
+    expect(SONNET_5_5_MIN_CLI_VERSION).toBe('2.1.284');
+    expect(resolvedModelId('sonnet', '2.1.283')).toBe('claude-sonnet-5');
+    expect(resolvedModelId('sonnet', '2.1.284')).toBe('claude-sonnet-5-5');
+    expect(resolvedModelId('sonnet', '2.1.291')).toBe('claude-sonnet-5-5');
+    expect(resolvedModelId('sonnet', null)).toBe('claude-sonnet-5-5');
+    expect(servedModelMatches('sonnet', 'claude-sonnet-5-5', '2.1.291')).toBe(true);
+    expect(servedModelMatches('sonnet', 'claude-sonnet-5', '2.1.291')).toBe(false);
+    expect(modelVersionBlock('claude-sonnet-5-5', '2.1.280')).toBe('Sonnet 5.5 requires Claude Code 2.1.284 or newer; this machine has 2.1.280.');
+    expect(modelVersionBlock('claude-sonnet-5-5', '2.1.291')).toBeNull();
+  });
+
+  it('Sonnet 5.5 starts at medium, its own default, and sonnet does where it resolves to it', () => {
+    expect(defaultEffortFor('claude-sonnet-5-5')).toBe('medium');
+    expect(defaultEffortFor('sonnet', '2.1.291')).toBe('medium');
+    expect(defaultEffortFor('sonnet', '2.1.280')).toBe('high');
+    expect(effortOnModelChange('claude-sonnet-5-5', 'high')).toBe('medium');
   });
 
   it('gives an alias the auto-compact threshold of what it resolves to', () => {
