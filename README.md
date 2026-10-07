@@ -44,13 +44,21 @@ CLI is present, new enough and signed in before it lets you start.
 How much it uses depends on the size of the task, on the models, and on what you compare it with.
 
 **Version 1.4.0** runs the Planner on Opus 5.5 and the Executor on Sonnet 5.5, both at medium effort. It also
-fixes two things that made large tasks expensive. On three large tasks, one run each:
+fixes two things that made large tasks expensive. We ran three large tasks, one run each, all on the same
+Claude Code (2.1.291). Every hidden test passed in all three ways of working:
 
-- every hidden test passed;
-- it cost about half to 0.6 times as much as a plain Opus session;
-- it finished in less time.
+| | Cost, three tasks | Time, three tasks |
+|---|---|---|
+| MushrifLoop 1.4.0 | $9.95 | 44 min |
+| Plain Claude Code, Opus 5.5 | $15.80 | 52 min |
+| Plain Claude Code, Sonnet 5.5 | $11.39 | 47 min |
 
-The plain Opus runs were measured earlier, on an older Claude Code.
+That is about 0.6 times plain Opus's cost, and 0.9 times plain Sonnet's, and it finished a little sooner. Three
+tasks and one run each show that it is no longer the expensive option on large tasks. They are not enough to
+rank the three.
+
+The dollars are what Claude Code reports at API prices. On a subscription they count against your usage
+limits instead.
 
 **Version 1.3.0** ran the Executor on Sonnet 5 at high effort. Our first measurements (22 tasks, one run each):
 
@@ -61,8 +69,7 @@ The plain Opus runs were measured earlier, on an older Claude Code.
 
 The Planner is the small part of the cost: about 6% on large tasks. The Executor's work is the rest.
 
-These are early numbers. A full comparison, with the plain sessions run again on the same Claude Code version,
-will be published here, whatever it says.
+These are early numbers. Larger runs will be published here, whatever they say.
 
 ## Install
 
