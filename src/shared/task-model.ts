@@ -161,6 +161,11 @@ export type TaskStatus =
 /** Statuses the loop can leave only through Resume (SPEC.md §6). */
 export const RESUMABLE_STATUSES: readonly TaskStatus[] = ['stopped', 'error', 'rate_limited', 'account_mismatch'];
 export const TERMINAL_STATUSES: readonly TaskStatus[] = ['done', 'failed'];
+/**
+ * A task "at rest" may be archived or deleted (SPEC.md §10, managing tasks): nothing is running and nothing
+ * waits for the user, a reset or an account. A turn or setup in flight is checked separately.
+ */
+export const AT_REST_STATUSES: readonly TaskStatus[] = ['draft', 'done', 'failed', 'stopped', 'error'];
 
 /**
  * Statuses where a message reopens the task and starts a Planner turn straight away (SPEC.md §4).
@@ -502,6 +507,10 @@ export interface TaskRecord {
    * its description, as before. The description itself is never changed by a rename.
    */
   title?: string | null;
+  /** When the task was archived (SPEC.md §10, managing tasks). Null or absent: not archived. */
+  archivedAt?: string | null;
+  /** When the task was pinned to the top of the list. A list preference: no event. Null or absent: not pinned. */
+  pinnedAt?: string | null;
   projectDir: string;
   /** The Planner's cwd — fixed for the task's lifetime (SPEC.md §3.1). */
   plannerCwd: string;
@@ -767,6 +776,8 @@ type EventBody =
   | { type: 'config_changed'; changes: ConfigChangeEntry[] }
   /** The user renamed the task (SPEC.md §10); null = no name, shown by its description. */
   | { type: 'renamed'; from: string | null; to: string | null }
+  /** The user archived (true) or unarchived (false) the task (SPEC.md §10, managing tasks). */
+  | { type: 'archived'; archived: boolean }
   | { type: 'commit'; cycle: number | null; purpose: 'cycle' | 'before_review' | 'snapshot'; info: CommitInfo }
   | { type: 'done'; finalReport: string }
   | { type: 'recovered'; detail: string };

@@ -78,6 +78,7 @@ import {
   missingRequiredSkills,
   skillOutcomes,
 } from './skills';
+import { restRefusal } from '../../shared/task-list';
 import {
   FOLLOW_UP_STATUSES,
   RESUMABLE_STATUSES,
@@ -851,6 +852,38 @@ export class TaskRunner {
     this.task.title = next;
     this.emit({ type: 'renamed', from, to: next });
     this.save();
+  }
+
+  /**
+   * Archive or unarchive the task (SPEC.md §10, managing tasks). Only a task at rest may be archived; the
+   * files stay where they are. Archiving unpins. Recorded as an `archived` event unless nothing changed.
+   */
+  setArchived(archived: boolean): void {
+    const was = !!this.task.archivedAt;
+    if (archived === was) return;
+    if (archived) {
+      const refusal = this.atRestRefusal('archived');
+      if (refusal) throw new TaskStateError(refusal);
+      this.task.archivedAt = this.deps.now().toISOString();
+      this.task.pinnedAt = null;
+    } else {
+      this.task.archivedAt = null;
+    }
+    this.emit({ type: 'archived', archived });
+    this.save();
+  }
+
+  /** Pin the task to the top of the list, or unpin it (SPEC.md §10). A list preference: no event. */
+  setPinned(pinned: boolean): void {
+    if (pinned === !!this.task.pinnedAt) return;
+    if (pinned && this.task.archivedAt) throw new TaskStateError('An archived task cannot be pinned. Unarchive it first.');
+    this.task.pinnedAt = pinned ? this.deps.now().toISOString() : null;
+    this.save();
+  }
+
+  /** Why the task may not be archived or deleted right now, or null when it is at rest (SPEC.md §10). */
+  atRestRefusal(what: 'archived' | 'deleted'): string | null {
+    return restRefusal(this.task.status, this.busy, what);
   }
 
   /** "Roll over now" (SPEC.md §15): before that agent's next turn. */

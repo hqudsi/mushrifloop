@@ -513,6 +513,16 @@ export function buildTimeline(events: readonly TaskEvent[], busy = true): Timeli
               : `Was “${e.from}”. Only the name changed: the description the agents work from is untouched.`,
         );
         break;
+      case 'archived':
+        note(
+          e,
+          'info',
+          e.archived ? 'Archived' : 'Unarchived',
+          e.archived
+            ? 'Moved to the Archived section of the task list. Nothing was deleted; Unarchive brings it back.'
+            : 'Back in the task list.',
+        );
+        break;
       case 'approval_mode_changed':
         note(
           e,

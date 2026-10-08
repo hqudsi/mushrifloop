@@ -43,6 +43,8 @@ CLI is present, new enough and signed in before it lets you start.
   handoffs itself.
 - **Follow-up.** A timeline of every cycle, a commit per cycle, and the full record of every turn.
 - **Your time.** A long task runs unattended and calls you only when a decision is yours.
+- **Your tasks, in order.** Grouped by project, searchable, pinned to the top or archived; a deleted task
+  goes to the Recycle Bin. The side panels can be widened or narrowed by dragging their edge.
 
 ## What it costs
 
@@ -99,6 +101,8 @@ There is no auto-update. A new version is a new installer from the same page.
   you when your CLI is out of date, and a check of GitHub for the latest MushrifLoop release, at start and
   once a day, to tell you when a new version is out (switch it off in Settings → General). The app never
   downloads or installs an update itself. Everything else on the network is Claude Code's own traffic.
+- Deleting a task in the app moves its folder to the Recycle Bin. Your project, its git branch and Claude
+  Code's own session files are not touched.
 - In a project it works on, the Executor may write long evidence to a `.mushrifloop/` folder. That folder is
   never committed.
 

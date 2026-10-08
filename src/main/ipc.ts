@@ -212,6 +212,15 @@ export function registerIpcHandlers(tasks: TaskService): void {
       return { ok: false, error: errorMessage(err) };
     }
   });
+  ipcMain.handle(IPC.tasksDelete, async (_event, taskId: unknown) => {
+    if (typeof taskId !== 'string') return { ok: false, error: 'Invalid task id.' };
+    try {
+      return await tasks.delete(taskId);
+    } catch (err) {
+      log.error('task.delete_failed', { taskId, error: errorMessage(err) });
+      return { ok: false, error: errorMessage(err) };
+    }
+  });
   ipcMain.handle(IPC.tasksChangedFiles, async (_event, taskId: unknown) => {
     const id = typeof taskId === 'string' ? taskId : '';
     try {

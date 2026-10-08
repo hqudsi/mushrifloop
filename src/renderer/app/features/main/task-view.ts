@@ -97,6 +97,16 @@ const APPROVAL_MODES: readonly { id: ApprovalMode; label: string }[] = [
         <span class="agent" [title]="'Executor session ' + t.sessions.executor.sessionId">
           <span class="cdot executor"></span><span [title]="agentNote('executor')">Executor · {{ agent('executor') }}</span>
         </span>
+        <!-- At the right end, beside the panel toggle, wherever a long title wraps the header (SPEC.md §10). -->
+        <button
+          type="button"
+          class="new-here more"
+          aria-haspopup="menu"
+          title="Rename, Pin to top, Archive, Delete…"
+          (click)="openMenu($event, t.id)"
+        >
+          ⋯
+        </button>
         <button
           type="button"
           class="panel-toggle"
@@ -112,6 +122,13 @@ const APPROVAL_MODES: readonly { id: ApprovalMode; label: string }[] = [
 
     @if (settingsOpen()) {
       <app-task-settings-dialog [task]="t" (closed)="settingsOpen.set(false)" />
+    }
+
+    @if (t.archivedAt) {
+      <div class="archived-line">
+        <span>This task is archived: it is in the Archived section at the foot of the task list. Nothing was deleted.</span>
+        <button type="button" class="new-here" (click)="store.manage(t.id, { kind: 'archive', archived: false })">Unarchive</button>
+      </div>
     }
 
     <div class="timeline">
@@ -252,6 +269,26 @@ const APPROVAL_MODES: readonly { id: ApprovalMode; label: string }[] = [
         background: var(--bg-button-hover);
         color: var(--text);
       }
+      .more {
+        height: 26px;
+        margin-left: 4px;
+        padding: 0 8px;
+        font-size: 14px;
+        line-height: 1;
+      }
+      .archived-line {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 20px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-card);
+        color: var(--text-2);
+        font-size: 12px;
+      }
+      .archived-line span {
+        flex: 1;
+      }
       .approval {
         display: flex;
         align-items: center;
@@ -322,6 +359,12 @@ export class TaskView {
   }
 
   /** Enter saves (SPEC.md §10). Unchanged, or the fallback typed back unchanged, sends nothing. */
+  /** The task's ⋯ menu (SPEC.md §10), under the button, its right edge on the button's. */
+  protected openMenu(event: MouseEvent, taskId: string): void {
+    const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    this.store.menu.set({ taskId, x: box.right - 200, y: box.bottom + 4, origin: 'header' });
+  }
+
   protected async saveTitle(text: string): Promise<void> {
     this.editingTitle.set(false);
     const t = this.detail().task;
@@ -385,6 +428,16 @@ export class TaskView {
   });
 
   constructor() {
+    // Rename… from the header's ⋯ menu: the header edits the name in place, as a double-click does.
+    effect(() => {
+      const request = this.store.renameRequest();
+      if (!request || request.origin !== 'header' || request.taskId !== this.detail().task.id) return;
+      untracked(() => {
+        this.store.renameRequest.set(null);
+        this.editingTitle.set(true);
+      });
+    });
+
     // New items while following; the waiting state when a task opens.
     effect(() => {
       // Tracked: anything that changes the content's height.

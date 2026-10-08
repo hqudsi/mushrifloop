@@ -6,21 +6,26 @@
 import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 
 import { api } from '../../core/api';
+import { LayoutStore } from '../../core/layout-store';
 import { PanelStore } from '../../core/panel-store';
+import { ResizeHandle } from '../../shared/resize-handle';
 import { TasksStore } from '../../core/tasks-store';
 import { ControlBar } from './control-bar';
+import { DeleteTaskDialog } from './delete-task-dialog';
 import { EmptyState } from './empty-state';
 import { RightPanel } from './right-panel';
+import { TaskMenu } from './task-menu';
 import { TaskList } from './task-list';
 import { TaskView } from './task-view';
 
 @Component({
   selector: 'app-main-screen',
   standalone: true,
-  imports: [ControlBar, EmptyState, RightPanel, TaskList, TaskView],
+  imports: [ControlBar, DeleteTaskDialog, EmptyState, ResizeHandle, RightPanel, TaskList, TaskMenu, TaskView],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-task-list />
+    <app-task-list [style.width.px]="layout.left()" />
+    <app-resize-handle side="left" />
     <section class="center">
       @if (store.detail(); as detail) {
         <app-task-view [detail]="detail" [summary]="store.selected()" />
@@ -33,6 +38,7 @@ import { TaskView } from './task-view';
             @if (failure.folder) {
               <div class="mono folder">{{ failure.folder }}</div>
               <button type="button" class="btn" (click)="openFolder(failure.folder)">Open the task folder</button>
+              <button type="button" class="btn" title="Moves the task's folder to the Recycle Bin. Asks first." (click)="store.deleteAsk.set(failure.taskId)">Delete…</button>
             }
             @if (openError(); as err) {
               <div class="callout danger failure">{{ err }}</div>
@@ -65,9 +71,12 @@ import { TaskView } from './task-view';
     </section>
     @if (store.detail(); as detail) {
       @if (panel.open()) {
-        <app-right-panel [detail]="detail" />
+        <app-resize-handle side="right" />
+        <app-right-panel [detail]="detail" [style.width.px]="layout.right()" />
       }
     }
+    <app-task-menu />
+    <app-delete-task-dialog />
   `,
   styles: [
     `
@@ -153,6 +162,7 @@ import { TaskView } from './task-view';
 export class MainScreen {
   protected readonly store = inject(TasksStore);
   protected readonly panel = inject(PanelStore);
+  protected readonly layout = inject(LayoutStore);
   protected readonly openError = signal<string | null>(null);
 
   constructor() {

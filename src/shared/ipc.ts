@@ -38,6 +38,7 @@ export const IPC = {
   tasksActivity: 'tasks:activity',
   tasksCreate: 'tasks:create',
   tasksAction: 'tasks:action',
+  tasksDelete: 'tasks:delete',
   accountStatus: 'account:status',
   tasksChangedFiles: 'tasks:changed-files',
   tasksOpenFile: 'tasks:open-file',
@@ -202,8 +203,18 @@ export interface TaskSummary {
   title: string;
   /** The name the user gave it, if any. */
   name: string | null;
+  /** The whole description, for search (SPEC.md §10). */
+  description: string;
   projectDir: string;
   projectName: string;
+  /** The project as grouped (SPEC.md §10): the folder path, case-insensitive on Windows, no trailing separator. */
+  projectKey: string;
+  /** Archived (SPEC.md §10, managing tasks). */
+  archived: boolean;
+  /** Pinned to the top of the list. Not to be confused with `pinned`, the account the task is pinned to. */
+  pinnedToTop: boolean;
+  /** The task's git branch, if it made one: named in the Delete dialog, never deleted by the app. */
+  gitBranch: string | null;
   status: TaskStatus;
   statusReason: string | null;
   waitingKind: WaitingState['kind'] | null;
@@ -261,7 +272,11 @@ export type TaskAction =
   /** "Task settings" on a task under way (SPEC.md §6). */
   | { kind: 'update_config'; update: ConfigUpdate }
   /** Give the task a name, or remove it with an empty title (SPEC.md §10). Any status. */
-  | { kind: 'rename'; title: string };
+  | { kind: 'rename'; title: string }
+  /** Archive or unarchive (SPEC.md §10). Only a task at rest may be archived. */
+  | { kind: 'archive'; archived: boolean }
+  /** Pin to the top of the list, or unpin. Any status. */
+  | { kind: 'pin'; pinned: boolean };
 
 /** The task that made a command wait: tasks run one at a time (SPEC.md §6, §13). */
 export interface BlockingTask {
@@ -399,6 +414,8 @@ export type TaskNoticeMessage =
   | { type: 'toast'; toast: TaskToast }
   /** A Windows notification was clicked: show this task. */
   | { type: 'open_task'; taskId: string }
+  /** The task was deleted (moved to the Recycle Bin, SPEC.md §10): drop it from the list. */
+  | { type: 'task_removed'; taskId: string }
   /**
    * Quit and stop (SPEC.md §6): the app waits for these tasks to stop before it exits. An empty list
    * hides the notice.
@@ -501,6 +518,11 @@ export interface AppApi {
   getTurnActivity(taskId: string, turnId: string): Promise<TurnActivity>;
   createTask(request: CreateTaskRequest): Promise<ActionResult>;
   taskAction(taskId: string, action: TaskAction): Promise<ActionResult>;
+  /**
+   * Move a task's folder to the Recycle Bin (SPEC.md §10). Only a task at rest, or an unreadable one. The
+   * project, its git branch and Claude Code's own session files are never touched.
+   */
+  deleteTask(taskId: string): Promise<ActionResult>;
   getAccountStatus(): Promise<AccountStatus>;
   /** Files the task changed, with line counts when git is in use. */
   getChangedFiles(taskId: string): Promise<ChangedFiles>;

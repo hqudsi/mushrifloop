@@ -637,3 +637,10 @@ code.inline {
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot, .typing > i { animation: none; }
 }
+
+/* While a side panel is being resized (SPEC.md §10): the ↔ cursor everywhere, and no text selection. */
+body.resizing-panel,
+body.resizing-panel * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}

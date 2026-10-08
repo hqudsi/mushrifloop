@@ -21,6 +21,7 @@ import type {
   TaskToast,
 } from '../../../shared/ipc';
 import type { LiveTurnEvent, TaskConfig, TaskEvent } from '../../../shared/task-model';
+import { listRank, sortTasks } from '../../../shared/task-list';
 import { buildTimeline, runningTurn, type TimelineItem } from '../../../shared/timeline';
 import { applyActivityEvent, emptyActivity, type TurnActivity } from '../../../shared/turn-activity';
 import { storageKey } from '../../../shared/app-config';
@@ -55,13 +56,6 @@ export interface NewTaskDraft {
 
 export interface ShownToast extends TaskToast {
   id: number;
-}
-
-/** Most urgent first: tasks needing the user, then running ones, then by last change. */
-function rank(t: TaskSummary): number {
-  if (t.status === 'waiting_user' || t.status === 'account_mismatch') return 0;
-  if (t.status === 'running' || t.busy) return 1;
-  return 2;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -106,17 +100,21 @@ export class TasksStore {
   readonly showMainRequest = signal(0);
   /** Bumped when the gear in the sidebar asks for Settings (SPEC.md §10). */
   readonly showSettingsRequest = signal(0);
+  /** The ⋯ menu of a task (SPEC.md §10, managing tasks), at a point in the window. */
+  readonly menu = signal<{ taskId: string; x: number; y: number; origin: 'list' | 'header' } | null>(null);
+  /** Rename… from the ⋯ menu: the list row or the header it was opened from edits the name in place. */
+  readonly renameRequest = signal<{ taskId: string; origin: 'list' | 'header' } | null>(null);
+  /** The task the Delete dialog asks about. */
+  readonly deleteAsk = signal<string | null>(null);
 
-  readonly sortedTasks = computed(() =>
-    [...this.tasks()].sort((a, b) => rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt)),
-  );
+  readonly sortedTasks = computed(() => sortTasks(this.tasks()));
   readonly selected = computed(() => this.tasks().find((t) => t.id === this.selectedId()) ?? null);
   readonly timeline = computed<TimelineItem[]>(() => {
     const d = this.detail();
     return d ? buildTimeline(d.events, d.busy) : [];
   });
   readonly running = computed(() => runningTurn(this.timeline()));
-  readonly waitingCount = computed(() => this.tasks().filter((t) => rank(t) === 0).length);
+  readonly waitingCount = computed(() => this.tasks().filter((t) => listRank(t) === 0).length);
 
   private started = false;
   private toastSeq = 0;
@@ -288,6 +286,45 @@ export class TasksStore {
     }
   }
 
+  /**
+   * Archive / Unarchive and Pin / Unpin (SPEC.md §10), on any task in the list. A refusal is shown on that
+   * task's control bar, so the task is opened first.
+   */
+  async manage(taskId: string, action: Extract<TaskAction, { kind: 'archive' | 'pin' }>): Promise<boolean> {
+    let result: ActionResult;
+    try {
+      result = await api().taskAction(taskId, action);
+    } catch (err) {
+      result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    if (!result.ok) {
+      if (this.selectedId() !== taskId) await this.select(taskId);
+      this.actionError.set({ taskId, message: result.error ?? 'The task could not be changed.', ...(result.nextStep ? { nextStep: result.nextStep } : {}) });
+    }
+    return result.ok;
+  }
+
+  /** Delete (SPEC.md §10): the folder goes to the Recycle Bin. The list follows from the `task_removed` notice. */
+  async deleteTask(taskId: string): Promise<ActionResult> {
+    try {
+      return await api().deleteTask(taskId);
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /** A task left the list: if it was on show, show the next one in the list instead. */
+  private removeTask(taskId: string): void {
+    const before = this.sortedTasks().filter((t) => !t.archived || t.id === taskId);
+    const index = before.findIndex((t) => t.id === taskId);
+    this.tasks.update((list) => list.filter((t) => t.id !== taskId));
+    if (this.menu()?.taskId === taskId) this.menu.set(null);
+    if (this.selectedId() !== taskId) return;
+    const rest = before.filter((t) => t.id !== taskId);
+    const next = rest[Math.min(Math.max(index, 0), rest.length - 1)] ?? null;
+    void this.select(next?.id ?? null);
+  }
+
   async act(action: TaskAction): Promise<boolean> {
     const taskId = this.selectedId();
     if (!taskId) return false;
@@ -338,6 +375,9 @@ export class TasksStore {
         break;
       case 'open_task':
         this.openTask(notice.taskId);
+        break;
+      case 'task_removed':
+        this.removeTask(notice.taskId);
         break;
       case 'quitting':
         this.quitting.set(notice.stopping.length > 0 ? { stopping: notice.stopping, budgetMs: notice.budgetMs } : null);

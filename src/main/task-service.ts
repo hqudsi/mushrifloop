@@ -81,6 +81,8 @@ export interface TaskServiceOptions {
   createDeps?: (settings: Settings, options: RealDepsOptions) => { deps: OrchestratorDeps };
   /** Tests: replaces launching the editor. */
   launchEditor?: (command: string, file: string, cwd: string) => Promise<EditorLaunchResult>;
+  /** Move a folder to the Recycle Bin (Delete, SPEC.md §10). Without it, Delete is refused. */
+  trash?: (folder: string) => Promise<void>;
 }
 
 interface LiveTurn {
@@ -96,14 +98,31 @@ function strip(event: TurnEvent): LiveTurnEvent {
   return rest as LiveTurnEvent;
 }
 
+/**
+ * How the task list groups a folder (SPEC.md §10): resolved, no trailing separator, and case-insensitive on
+ * Windows, where `D:\Work\App` and `d:\work\app\` are the same project.
+ */
+export function projectKey(dir: string, platform: NodeJS.Platform = process.platform): string {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  let key = p.resolve(dir);
+  const root = p.parse(key).root;
+  while (key.length > root.length && /[\\/]$/.test(key)) key = key.slice(0, -1);
+  return platform === 'win32' ? key.toLowerCase() : key;
+}
+
 export function summarize(task: TaskRecord, busy: boolean): TaskSummary {
   const agent = (a: TaskRecord['config']['planner']) => (a.effort ? `${a.model} · ${a.effort}` : a.model);
   return {
     id: task.id,
     title: taskTitle(task, 90),
     name: task.title ?? null,
+    description: task.description,
     projectDir: task.projectDir,
     projectName: path.basename(task.projectDir),
+    projectKey: projectKey(task.projectDir),
+    archived: !!task.archivedAt,
+    pinnedToTop: !!task.pinnedAt,
+    gitBranch: task.git?.branch ?? null,
     status: task.status,
     statusReason: task.statusReason,
     waitingKind: task.waiting?.kind ?? null,
@@ -132,8 +151,13 @@ export function unreadableSummary(taskId: string, folder: string, error: string)
     id: taskId,
     title: `Unreadable task ${taskId}`,
     name: null,
+    description: '',
     projectDir: folder,
     projectName: path.basename(folder),
+    projectKey: projectKey(folder),
+    archived: false,
+    pinnedToTop: false,
+    gitBranch: null,
     status: 'error',
     statusReason: error,
     waitingKind: null,
@@ -262,6 +286,10 @@ export function parseAction(raw: unknown): TaskAction | null {
       const title = text(raw['title']);
       return title === null ? null : { kind: 'rename', title };
     }
+    case 'archive':
+      return typeof raw['archived'] === 'boolean' ? { kind: 'archive', archived: raw['archived'] } : null;
+    case 'pin':
+      return typeof raw['pinned'] === 'boolean' ? { kind: 'pin', pinned: raw['pinned'] } : null;
     default:
       return null;
   }
@@ -889,10 +917,18 @@ export class TaskService {
       case 'rollover_now':
       case 'set_approval_mode':
       case 'rename':
+      case 'archive':
+      case 'pin':
         try {
           if (action.kind === 'rollover_now') runner.requestRollover(action.agent);
           else if (action.kind === 'set_approval_mode') runner.setApprovalMode(action.mode);
           else if (action.kind === 'rename') runner.rename(action.title);
+          else if (action.kind === 'archive') {
+            // A command accepted but not yet driving counts as running too (SPEC.md §10: only a task at rest).
+            if (action.archived && this.claims.has(taskId)) throw new TaskStateError('This task is starting, so it cannot be archived. Stop it first.');
+            runner.setArchived(action.archived);
+          }
+          else if (action.kind === 'pin') runner.setPinned(action.pinned);
           else runner.setStandingInstructions(action.agent, action.text);
           return { ok: true };
         } catch (err) {
@@ -914,6 +950,14 @@ export class TaskService {
         nextStep: 'Tasks run one at a time — pause or stop that task first, or wait for it to finish.',
         blockedBy: blocking,
       };
+    }
+    // A command that runs the loop brings an archived task back into the list (SPEC.md §10).
+    if (runner.snapshot.archivedAt) {
+      try {
+        runner.setArchived(false);
+      } finally {
+        this.flushTask(taskId, runner.snapshot);
+      }
     }
     switch (action.kind) {
       case 'start':
@@ -938,6 +982,45 @@ export class TaskService {
       case 'reject_plan':
         return this.launch(taskId, () => runner.rejectPlan(action.reason));
     }
+  }
+
+  /**
+   * Delete (SPEC.md §10): move the task's folder to the Recycle Bin. Only a task at rest, or one that could
+   * not be loaded. Nothing outside the folder is touched: not the project, not its git branch, not Claude
+   * Code's session files. If the Recycle Bin refuses, nothing changes and the raw error is returned.
+   */
+  async delete(taskId: string): Promise<ActionResult> {
+    if (!/^[\w-]+$/.test(taskId)) return { ok: false, error: `Unknown task ${taskId}.` };
+    const folder = this.store.taskDir(taskId);
+    const runner = this.runners.get(taskId);
+    const unreadable = !runner && (this.loadErrors.has(taskId) || fs.existsSync(folder));
+    if (!runner && !unreadable) return { ok: false, error: `Unknown task ${taskId}.` };
+    if (runner) {
+      const refusal = this.claims.has(taskId) ? 'This task is starting, so it cannot be deleted. Stop it first.' : runner.atRestRefusal('deleted');
+      if (refusal) return { ok: false, error: refusal };
+    }
+    if (!this.options.trash) return { ok: false, error: 'Deleting tasks is not available here.' };
+    const title = runner ? summarize(runner.snapshot, false).title : taskId;
+    try {
+      await this.options.trash(folder);
+    } catch (err) {
+      log.error('task.delete_failed', { taskId, folder, error: errorMessage(err) });
+      return {
+        ok: false,
+        error: `Could not move ${folder} to the Recycle Bin: ${errorMessage(err)}`,
+        nextStep: 'Nothing was deleted. Close any program that has a file of this task open, and try again.',
+      };
+    }
+    runner?.dispose();
+    this.runners.delete(taskId);
+    this.loadErrors.delete(taskId);
+    this.liveTurns.delete(taskId);
+    const pending = this.pendingTask.get(taskId);
+    if (pending) clearTimeout(pending.timer);
+    this.pendingTask.delete(taskId);
+    log.info('task.deleted', { taskId, title, folder, to: 'recycle bin' });
+    this.options.send({ type: 'task_removed', taskId });
+    return { ok: true, taskId };
   }
 
   /**

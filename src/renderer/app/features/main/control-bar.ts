@@ -169,6 +169,8 @@ const MODES: Record<Mode, ModeInfo> = {
         border-top: 1px solid var(--border);
         background: var(--bg-chrome);
         padding: 10px 0 14px;
+        /* The composer's layout follows the centre's width, not the window's (SPEC.md §10). */
+        container-type: inline-size;
       }
       .bar {
         display: flex;
@@ -313,10 +315,21 @@ const MODES: Record<Mode, ModeInfo> = {
         resize: none;
         line-height: 1.4;
         min-height: 32px;
-        /* Grows with the text up to 4 lines, then scrolls (SPEC.md §10). */
-        max-height: calc(4lh + 14px);
+        /* Grows with the text up to 8 lines, then scrolls (SPEC.md §10). */
+        max-height: calc(8lh + 14px);
         overflow-y: auto;
         field-sizing: content;
+      }
+      /* A narrow centre (a small window, or wide side panels): the message box gets a line of its own under
+         the buttons instead of being squeezed beside them (SPEC.md §10). */
+      @container (max-width: 600px) {
+        .controls {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .label-row .kbd {
+          display: none;
+        }
       }
       .input-box:disabled {
         color: var(--text-muted);

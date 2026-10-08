@@ -254,7 +254,13 @@ if (!singleInstance) {
     applyTheme(settings.general.theme);
     watchSystemTheme();
     registerAppProtocol();
-    const tasks = new TaskService({ getSettings, send: broadcast, notify: (toast, { sound }) => showTaskToast(toast, sound) });
+    const tasks = new TaskService({
+      getSettings,
+      send: broadcast,
+      notify: (toast, { sound }) => showTaskToast(toast, sound),
+      // Delete moves a task's folder to the Recycle Bin, never erases it (SPEC.md §10).
+      trash: (folder) => shell.trashItem(folder),
+    });
     tasks.init();
     registerIpcHandlers(tasks);
 

@@ -32,6 +32,19 @@ describe('renaming in the timeline (SPEC.md §10)', () => {
   });
 });
 
+describe('archiving in the timeline (SPEC.md §10)', () => {
+  it('notes archive and unarchive, and nothing for a pin', async () => {
+    const runner = await h.create();
+    runner.setPinned(true);
+    runner.setArchived(true);
+    runner.setArchived(false);
+    const notes = buildTimeline(h.events(runner), false).filter((i) => i.kind === 'note');
+    expect(notes.map((n) => (n.kind === 'note' ? n.title : ''))).toEqual(['Archived', 'Unarchived']);
+    const first = notes[0];
+    expect(first?.kind === 'note' ? first.text : null).toContain('Nothing was deleted');
+  });
+});
+
 describe('describeConfigChange (SPEC.md §6)', () => {
   it('says what changed and, for a model, which way it was applied', () => {
     const same = describeConfigChange([
