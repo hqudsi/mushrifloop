@@ -59,7 +59,7 @@ export const FALLBACK_AUTO_COMPACT_THRESHOLD = 167_000;
  * verified against. Some models need a newer one: see their `minCliVersion` (SPEC.md §3.2, §8).
  */
 export const MIN_CLI_VERSION = '2.1.251';
-export const VERIFIED_CLI_VERSION = '2.1.291';
+export const VERIFIED_CLI_VERSION = '2.1.293';
 
 /**
  * Fable 5.1 needs this CLI (SPEC.md §3.2, decided 2026-09-26). The "Model configuration" docs give 2.1.257; the
@@ -77,6 +77,12 @@ export const OPUS_5_5_MIN_CLI_VERSION = '2.1.280';
 export const SONNET_5_5_MIN_CLI_VERSION = '2.1.284';
 
 /**
+ * Haiku 5.5 needs this CLI, and from it `haiku` resolves to Haiku 5.5 on the Anthropic API (SPEC.md §8, added
+ * 2026-10-08; the CLI's changelog for 2.1.293 and the "Model configuration" docs).
+ */
+export const HAIKU_5_5_MIN_CLI_VERSION = '2.1.293';
+
+/**
  * What an alias resolves to, by installed CLI version (SPEC.md §8). Each entry applies from `fromCli` until the
  * next one. Verified on 2.1.280 (2026-09-22) with the CLI's own model list and a real call; `opus` meant Opus 5
  * from 2.1.219 until then.
@@ -90,7 +96,19 @@ export const ALIAS_RESOLUTION: Readonly<Record<string, readonly { fromCli: strin
     { fromCli: '0', model: 'claude-sonnet-5' },
     { fromCli: SONNET_5_5_MIN_CLI_VERSION, model: 'claude-sonnet-5-5' },
   ],
-  haiku: [{ fromCli: '0', model: 'claude-haiku-4-5' }],
+  haiku: [
+    { fromCli: '0', model: 'claude-haiku-4-5' },
+    { fromCli: HAIKU_5_5_MIN_CLI_VERSION, model: 'claude-haiku-5-5' },
+  ],
+};
+
+/**
+ * Auto-compact thresholds of models an alias can still resolve to on an older CLI but that are not offered by
+ * their full id (SPEC.md §15): without these an old CLI's `haiku` would take Haiku 5.5's 1M figure.
+ */
+const RESOLVED_ONLY_AUTO_COMPACT: Readonly<Record<string, number>> = {
+  'claude-sonnet-5': 967_000,
+  'claude-haiku-4-5': 167_000,
 };
 
 /**
@@ -108,6 +126,7 @@ const MODEL_NAMES: Readonly<Record<string, string>> = {
   'claude-opus-4-7': 'Opus 4.7',
   'claude-opus-4-6': 'Opus 4.6',
   'claude-sonnet-4-6': 'Sonnet 4.6',
+  'claude-haiku-5-5': 'Haiku 5.5',
   'claude-haiku-4-5': 'Haiku 4.5',
 };
 
@@ -158,6 +177,16 @@ export const MODELS: readonly ModelSpec[] = [
     defaultEffort: 'medium',
     minCliVersion: SONNET_5_5_MIN_CLI_VERSION,
   },
+  {
+    id: 'claude-haiku-5-5',
+    label: 'Haiku 5.5',
+    efforts: ALL_EFFORTS,
+    contextWindow: 1_000_000,
+    autoCompactThreshold: 967_000,
+    servedAs: 'claude-haiku-5-5',
+    defaultEffort: 'medium',
+    minCliVersion: HAIKU_5_5_MIN_CLI_VERSION,
+  },
   { ...model('opus', 'Opus', ALL_EFFORTS, 1_000_000, 967_000, 'claude-opus-5-5'), isAlias: true },
   model('claude-opus-5', 'Opus 5', ALL_EFFORTS, 1_000_000, 967_000),
   { ...model('sonnet', 'Sonnet', ALL_EFFORTS, 1_000_000, 967_000, 'claude-sonnet-5-5'), isAlias: true },
@@ -165,7 +194,8 @@ export const MODELS: readonly ModelSpec[] = [
   model('claude-opus-4-7', 'Opus 4.7', ALL_EFFORTS, 1_000_000, 967_000),
   model('claude-opus-4-6', 'Opus 4.6', NO_XHIGH, 200_000, 167_000),
   model('claude-sonnet-4-6', 'Sonnet 4.6', NO_XHIGH, 200_000, 167_000),
-  { ...model('haiku', 'Haiku', [], 200_000, 167_000, 'claude-haiku-4-5'), isAlias: true },
+  // `medium` as its own default: a `haiku` stored without an effort, from before Haiku 5.5, keeps behaving as it did.
+  { ...model('haiku', 'Haiku', ALL_EFFORTS, 1_000_000, 967_000, 'claude-haiku-5-5'), isAlias: true, defaultEffort: 'medium' },
 ];
 
 /**
@@ -320,8 +350,13 @@ export function modelDisplay(modelId: string, cliVersion: string | null): ModelD
 }
 
 export function autoCompactThresholdFor(modelId: string, cliVersion: string | null = null): number {
-  const resolved = getModel(resolvedModelId(modelId, cliVersion));
-  return resolved?.autoCompactThreshold ?? getModel(modelId)?.autoCompactThreshold ?? FALLBACK_AUTO_COMPACT_THRESHOLD;
+  const id = resolvedModelId(modelId, cliVersion);
+  return (
+    getModel(id)?.autoCompactThreshold ??
+    RESOLVED_ONLY_AUTO_COMPACT[id] ??
+    getModel(modelId)?.autoCompactThreshold ??
+    FALLBACK_AUTO_COMPACT_THRESHOLD
+  );
 }
 
 /**

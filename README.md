@@ -23,6 +23,7 @@ Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
 - Windows 10 or 11, x64.
 - **Claude Code installed and signed in on the machine**, version 2.1.251 or newer. The default Executor runs
   on Sonnet 5.5 from Claude Code 2.1.284; an older version runs it on Sonnet 5.
+  Haiku 5.5, with its effort levels, needs Claude Code 2.1.293; an older version runs `haiku` on Haiku 4.5.
 
 MushrifLoop never talks to the Anthropic API itself. Every turn is an ordinary `claude` process started on
 your machine, unmodified, under whoever is signed in to Claude Code. All the work runs on your own Claude

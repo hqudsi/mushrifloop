@@ -36,6 +36,7 @@ describe('model → effort validity table (SPEC.md §8)', () => {
     'claude-fable-5-1': ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-opus-5-5': ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-sonnet-5-5': ['low', 'medium', 'high', 'xhigh', 'max'],
+    'claude-haiku-5-5': ['low', 'medium', 'high', 'xhigh', 'max'],
     opus: ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-opus-5': ['low', 'medium', 'high', 'xhigh', 'max'],
     sonnet: ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -43,7 +44,7 @@ describe('model → effort validity table (SPEC.md §8)', () => {
     'claude-opus-4-7': ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-opus-4-6': ['low', 'medium', 'high', 'max'],
     'claude-sonnet-4-6': ['low', 'medium', 'high', 'max'],
-    haiku: [],
+    haiku: ['low', 'medium', 'high', 'xhigh', 'max'],
   };
 
   it('lists exactly the models in the spec, in order', () => {
@@ -65,10 +66,10 @@ describe('model → effort validity table (SPEC.md §8)', () => {
     expect(isEffortValid('sonnet', 'xhigh')).toBe(true);
   });
 
-  it('treats Haiku as having no effort control', () => {
-    expect(supportsEffort('haiku')).toBe(false);
-    expect(isEffortValid('haiku', null)).toBe(true);
-    expect(isEffortValid('haiku', 'high')).toBe(false);
+  it('gives Haiku effort control since Haiku 5.5 (2026-10-08)', () => {
+    expect(supportsEffort('haiku')).toBe(true);
+    expect(isEffortValid('haiku', null)).toBe(false);
+    expect(isEffortValid('haiku', 'xhigh')).toBe(true);
   });
 
   it('reports unknown models as having no valid effort', () => {
@@ -92,8 +93,9 @@ describe('coerceEffort', () => {
     expect(coerceEffort('claude-opus-4-6', 'xhigh')).toBe('high');
   });
 
-  it('returns null for models without effort control', () => {
-    expect(coerceEffort('haiku', 'high')).toBeNull();
+  it('gives haiku stored without an effort its own default, medium', () => {
+    expect(coerceEffort('haiku', null)).toBe('medium');
+    expect(coerceEffort('claude-haiku-5-5', null)).toBe('medium');
   });
 
   it('returns null for unknown models', () => {
@@ -108,14 +110,14 @@ describe('coerceEffort', () => {
 /** SPEC.md §15 — measured 2026-09-16 on CLI 2.1.273. */
 describe('auto-compact thresholds and rollover (SPEC.md §15)', () => {
   it('uses 967,000 for the 1M-context models', () => {
-    for (const id of ['claude-fable-5-1', 'opus', 'sonnet', 'claude-opus-4-8', 'claude-opus-4-7']) {
+    for (const id of ['claude-fable-5-1', 'opus', 'sonnet', 'haiku', 'claude-haiku-5-5', 'claude-opus-4-8', 'claude-opus-4-7']) {
       expect(autoCompactThresholdFor(id)).toBe(967_000);
       expect(getModel(id)?.contextWindow).toBe(1_000_000);
     }
   });
 
   it('uses 167,000 for the 200k-context models', () => {
-    for (const id of ['claude-opus-4-6', 'claude-sonnet-4-6', 'haiku']) {
+    for (const id of ['claude-opus-4-6', 'claude-sonnet-4-6']) {
       expect(autoCompactThresholdFor(id)).toBe(167_000);
       expect(getModel(id)?.contextWindow).toBe(200_000);
     }
@@ -207,13 +209,19 @@ describe('modelVersionBlock', () => {
       { label: 'Fable 5.1', minimum: '2.1.257' },
       { label: 'Opus 5.5', minimum: '2.1.280' },
       { label: 'Sonnet 5.5', minimum: '2.1.284' },
+      { label: 'Haiku 5.5', minimum: '2.1.293' },
     ]);
     expect(modelsTooNewFor('2.1.273')).toEqual([
       { label: 'Opus 5.5', minimum: '2.1.280' },
       { label: 'Sonnet 5.5', minimum: '2.1.284' },
+      { label: 'Haiku 5.5', minimum: '2.1.293' },
     ]);
-    expect(modelsTooNewFor('2.1.280')).toEqual([{ label: 'Sonnet 5.5', minimum: '2.1.284' }]);
-    expect(modelsTooNewFor('2.1.284')).toEqual([]);
+    expect(modelsTooNewFor('2.1.280')).toEqual([
+      { label: 'Sonnet 5.5', minimum: '2.1.284' },
+      { label: 'Haiku 5.5', minimum: '2.1.293' },
+    ]);
+    expect(modelsTooNewFor('2.1.291')).toEqual([{ label: 'Haiku 5.5', minimum: '2.1.293' }]);
+    expect(modelsTooNewFor('2.1.293')).toEqual([]);
   });
 
   it('treats an unreadable version as too old for a model with a minimum', () => {
@@ -244,7 +252,7 @@ describe('Opus 5.5 (SPEC.md §8)', () => {
     expect([...effortsFor('claude-opus-5-5')]).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
     expect(defaultEffortFor('claude-opus-5-5')).toBe('medium');
     expect(defaultEffortFor('claude-opus-4-8')).toBe('high');
-    expect(defaultEffortFor('haiku')).toBeNull();
+    expect(defaultEffortFor('claude-made-up')).toBeNull();
   });
 
   it('needs Claude Code 2.1.280, enforced by the same check as Fable', () => {
@@ -273,7 +281,7 @@ describe('Opus 5.5 (SPEC.md §8)', () => {
     // Every other model keeps a valid effort, as before.
     expect(effortOnModelChange('claude-opus-4-8', 'xhigh')).toBe('xhigh');
     expect(effortOnModelChange('claude-opus-4-6', 'xhigh')).toBe('high');
-    expect(effortOnModelChange('haiku', 'high')).toBeNull();
+    expect(effortOnModelChange('claude-made-up', 'high')).toBeNull();
   });
 
   it('coerces a missing effort to its own default', () => {

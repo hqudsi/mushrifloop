@@ -96,7 +96,7 @@ describe('sanitizeOverrides', () => {
       }),
     ).toEqual({
       planner: { model: 'opus', effort: 'low' },
-      executor: { model: 'haiku', effort: null },
+      executor: { model: 'haiku', effort: 'max' },
       maxCycles: 500,
       rolloverPercent: 5,
       approvalMode: 'auto',

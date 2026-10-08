@@ -50,7 +50,9 @@ describe('buildTurnArgs — both agents (SPEC.md §3.1)', () => {
   });
 
   it('omits --effort for a model without effort control', () => {
-    expect(buildTurnArgs(planner({ model: 'haiku', effort: 'high' }))).not.toContain('--effort');
+    expect(buildTurnArgs(planner({ model: 'claude-made-up', effort: 'high' }))).not.toContain('--effort');
+    // Since Haiku 5.5 (2026-10-08) the alias takes an effort.
+    expect(buildTurnArgs(planner({ model: 'haiku', effort: 'low' }))).toContain('--effort');
     expect(buildTurnArgs(planner({ effort: null }))).not.toContain('--effort');
   });
 

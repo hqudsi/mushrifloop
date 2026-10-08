@@ -191,19 +191,19 @@ describe('pickServedModel (SPEC.md §8)', () => {
 /** SPEC.md §3.3: Test connection names the app's minimum and every model the installed CLI cannot run. */
 describe('cliVersionWarnings', () => {
   it('says nothing on a CLI that runs every model', () => {
-    expect(cliVersionWarnings('2.1.284')).toEqual([]);
-    expect(cliVersionWarnings('2.1.291')).toEqual([]);
+    expect(cliVersionWarnings('2.1.293')).toEqual([]);
+    expect(cliVersionWarnings('2.1.300')).toEqual([]);
   });
 
   it('names each model whose own minimum is above the installed version', () => {
     expect(cliVersionWarnings('2.1.280')).toEqual([
-      'On Claude Code 2.1.280 these models cannot run: Sonnet 5.5 (needs 2.1.284). Run `claude update` to use them.',
+      'On Claude Code 2.1.280 these models cannot run: Sonnet 5.5 (needs 2.1.284), Haiku 5.5 (needs 2.1.293). Run `claude update` to use them.',
     ]);
     expect(cliVersionWarnings('2.1.273')).toEqual([
-      'On Claude Code 2.1.273 these models cannot run: Opus 5.5 (needs 2.1.280), Sonnet 5.5 (needs 2.1.284). Run `claude update` to use them.',
+      'On Claude Code 2.1.273 these models cannot run: Opus 5.5 (needs 2.1.280), Sonnet 5.5 (needs 2.1.284), Haiku 5.5 (needs 2.1.293). Run `claude update` to use them.',
     ]);
     expect(cliVersionWarnings('2.1.251')).toEqual([
-      'On Claude Code 2.1.251 these models cannot run: Fable 5.1 (needs 2.1.257), Opus 5.5 (needs 2.1.280), Sonnet 5.5 (needs 2.1.284). Run `claude update` to use them.',
+      'On Claude Code 2.1.251 these models cannot run: Fable 5.1 (needs 2.1.257), Opus 5.5 (needs 2.1.280), Sonnet 5.5 (needs 2.1.284), Haiku 5.5 (needs 2.1.293). Run `claude update` to use them.',
     ]);
   });
 

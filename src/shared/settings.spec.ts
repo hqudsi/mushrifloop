@@ -154,10 +154,10 @@ describe('mergeSettings', () => {
 
   it('forces the effort to something the model actually supports', () => {
     const merged = mergeSettings({
-      taskDefaults: { plannerModel: 'claude-opus-4-6', plannerEffort: 'xhigh', executorModel: 'haiku', executorEffort: 'max' },
+      taskDefaults: { plannerModel: 'claude-opus-4-6', plannerEffort: 'xhigh', executorModel: 'claude-sonnet-4-6', executorEffort: 'xhigh' },
     });
     expect(merged.taskDefaults.plannerEffort).toBe('high');
-    expect(merged.taskDefaults.executorEffort).toBeNull();
+    expect(merged.taskDefaults.executorEffort).toBe('high');
   });
 
   it('cleans tool and skill lists: trims, drops blanks and de-duplicates', () => {
@@ -259,7 +259,7 @@ describe('defaults after an update (SPEC.md §11)', () => {
     ]);
   });
 
-  it('offers no effort change for a model without effort control', () => {
+  it('offers no effort change when haiku was stored without one: it reads as medium already (Haiku 5.5)', () => {
     const pending = pendingDefaultChanges(savedAtRevision2({ executorModel: 'haiku', executorEffort: null }));
     expect(pending.map((c) => c.field)).toEqual(['plannerEffort']);
   });

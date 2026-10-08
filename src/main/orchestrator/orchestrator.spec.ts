@@ -1151,7 +1151,7 @@ describe("changing a running task's settings (§6)", () => {
     const runner = await waitingAfterOneCycle();
     expect(() => runner.updateConfig({ executor: { model: 'claude-made-up', effort: 'high' } })).toThrow('Unknown model');
     expect(() => runner.updateConfig({ executor: { model: 'claude-opus-4-6', effort: 'xhigh' } })).toThrow('not a valid effort');
-    expect(() => runner.updateConfig({ executor: { model: 'haiku', effort: 'low' } })).toThrow('not a valid effort');
+    expect(() => runner.updateConfig({ executor: { model: 'claude-sonnet-4-6', effort: 'xhigh' } })).toThrow('not a valid effort');
     expect(h.task(runner).config.executor).toEqual({ model: 'sonnet', effort: 'low' });
     expect(h.eventsOf(runner, 'config_changed')).toHaveLength(0);
   });
@@ -2096,7 +2096,7 @@ describe('rollover (§15)', () => {
 
   it('at or below the threshold nothing happens; 200k models roll over much earlier', async () => {
     h.planner(P.cont('A'), big(580_200)).executor(E.ok(), big(100_201)).planner(P.cont('B')).executor(HANDOFF).executor(E.ok(['b'])).planner(P.done());
-    const runner = await h.create({ executor: { model: 'haiku', effort: null } });
+    const runner = await h.create({ executor: { model: 'claude-sonnet-4-6', effort: 'medium' } });
     await runner.start();
     expect(h.specs.map((s) => s.schema)).toEqual([
       'planner-output',
