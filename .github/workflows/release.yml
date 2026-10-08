@@ -46,10 +46,30 @@ jobs:
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "The tag $env:GITHUB_REF_NAME does not match package.json's version $version." }
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npx vitest run
-      - run: npm run pack
+      # Each step's output also goes to ci.log, for the failure report at the end. (The run's bash has pipefail
+      # on, so a failing command still fails its step through the pipe.)
+      - name: Versions
+        shell: bash
+        run: '{ echo "node $(node --version), npm $(npm --version)"; } 2>&1 | tee -a ci.log'
+      - shell: bash
+        run: npm ci --no-audit --no-fund 2>&1 | tee -a ci.log
+      - shell: bash
+        run: npm run typecheck 2>&1 | tee -a ci.log
+      - shell: bash
+        run: npx vitest run 2>&1 | tee -a ci.log
+      - shell: bash
+        run: npm run pack 2>&1 | tee -a ci.log
+      # A job's log needs a signed-in admin; an annotation can be read by anyone. On a failure, the last lines
+      # of output (and npm's own log, when npm failed) go into annotations.
+      - name: Report a failure where it can be read
+        if: failure()
+        shell: bash
+        run: |
+          annotate() { tail -n 60 "$2" | sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/\r$//' -e 's/%/%25/g' | awk -v t="$1" 'BEGIN{printf "::error title=%s::", t} {printf "%s%%0A", $0} END{print ""}'; }
+          [ -f ci.log ] && annotate "Last output" ci.log
+          npmlog="$(ls -t "$(cygpath -u "$(npm config get cache)")"/_logs/*.log 2>/dev/null | head -n 1 || true)"
+          [ -n "$npmlog" ] && annotate "npm log" "$npmlog"
+          true
       - name: SHA-256
         shell: pwsh
         run: |
