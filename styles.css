@@ -831,6 +831,69 @@ footer p {
   max-width: 46em;
 }
 
+/* ── a page of text: the code signing policy ─────────────── */
+.doc-head {
+  padding-block: 36px 60px;
+}
+.doc-head h1 {
+  font-size: clamp(34px, 4.4vw, 52px);
+  max-width: 18em;
+}
+.doc-head .note {
+  max-width: 44em;
+}
+.doc-head .note p {
+  margin: 0;
+}
+.prose > p,
+.prose > ol {
+  max-width: 44em;
+}
+.prose > p {
+  color: var(--ink-2);
+  margin: 0 0 14px;
+}
+.prose > p b {
+  color: var(--ink);
+  font-weight: 540;
+}
+.prose > ol {
+  margin: 0;
+  padding-inline-start: 1.3em;
+}
+.prose > ol li {
+  margin-bottom: 12px;
+}
+.prose > .credit {
+  color: var(--ink);
+  font-size: 19px;
+  font-weight: 460;
+  margin-bottom: 18px;
+}
+.holds.one {
+  grid-template-columns: minmax(0, 1fr);
+}
+.holds.one li {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+.holds i {
+  font-style: normal;
+  color: var(--ink);
+}
+/* An English label inside Arabic text breaks badly across lines, so it keeps to one. */
+[dir='rtl'] .holds i[dir='ltr'] {
+  white-space: nowrap;
+}
+.sub.after {
+  margin: 24px 0 0;
+  font-size: 15.5px;
+}
+@media (max-width: 520px) {
+  .holds.one li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ── arrival ─────────────────────────────────────────────── */
 .rise {
   opacity: 0;

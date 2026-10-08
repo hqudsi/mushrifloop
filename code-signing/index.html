@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Code signing policy — MushrifLoop</title>
+    <meta
+      name="description"
+      content="How MushrifLoop's Windows releases are built and signed, who may approve a signature, and what the app sends over the network."
+    />
+    <meta property="og:title" content="Code signing policy — MushrifLoop" />
+    <meta property="og:description" content="How MushrifLoop's Windows releases are built and signed, who may approve a signature, and what the app sends over the network." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hqudsi.github.io/mushrifloop/code-signing/" />
+    <meta property="og:image" content="https://hqudsi.github.io/mushrifloop/img/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="MushrifLoop: one session plans, one does the work, you stay in charge. The Planner, the Executor and the loop between them." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://hqudsi.github.io/mushrifloop/code-signing/" />
+    <link rel="alternate" hreflang="en" href="https://hqudsi.github.io/mushrifloop/code-signing/" />
+    <link rel="alternate" hreflang="ar" href="https://hqudsi.github.io/mushrifloop/ar/code-signing/" />
+    <link rel="alternate" hreflang="x-default" href="https://hqudsi.github.io/mushrifloop/code-signing/" />
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../styles.css?v=9" />
+  </head>
+  <body>
+    <header class="wrap top">
+      <a class="brand" href="../"><img src="../icon.svg" alt="" />MushrifLoop</a>
+      <nav>
+        <a href="../#how">How it runs</a>
+        <a href="../#install">Install</a>
+        <a href="https://github.com/hqudsi/mushrifloop">GitHub</a>
+        <a class="lang" href="../ar/code-signing/" lang="ar" hreflang="ar">العربية</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap doc-head">
+        <p class="kicker">Code signing policy</p>
+        <h1>How the releases are built and signed.</h1>
+        <p class="lede">
+          This page says who signs MushrifLoop's Windows files, how a release gets from the public source to a signed download, who may
+          approve a signature, and what the app sends over the network.
+        </p>
+        <div class="note">
+          <h3>Not signed yet</h3>
+          <p>
+            Signing through SignPath Foundation is being set up. Releases up to and including 1.7.0 are not signed, and Windows shows them
+            as coming from an unknown publisher. The first signed release will say so in its notes, and this note will go.
+          </p>
+        </div>
+      </div>
+
+      <section id="signing">
+        <div class="wrap prose">
+          <p class="kicker">Signing</p>
+          <h2>Who signs the files.</h2>
+          <p class="credit">
+            Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by
+            <a href="https://signpath.org">SignPath Foundation</a>.
+          </p>
+          <p>
+            Windows shows the publisher of a signed release as <b>SignPath Foundation</b>. The signature says that the file was built from
+            this project's public source code and has not been changed since. The certificate's private key is held by SignPath in a
+            hardware security module; the project never has it.
+          </p>
+        </div>
+      </section>
+
+      <section id="build">
+        <div class="wrap prose">
+          <p class="kicker">Building</p>
+          <h2>Built in public, approved by hand.</h2>
+          <ol>
+            <li>
+              Every release is built by GitHub Actions, on runners hosted by GitHub, from the public repository
+              <a href="https://github.com/hqudsi/mushrifloop">github.com/hqudsi/mushrifloop</a> at the release's tag. A file built
+              anywhere else is never signed.
+            </li>
+            <li>The build signs the app's own program and both downloads: the installer and the portable file.</li>
+            <li>Each signing request waits for an approver, who checks that it comes from a release of this repository before approving it.</li>
+            <li>Each release lists the SHA-256 of its files, so any download can be checked against it.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="team">
+        <div class="wrap">
+          <p class="kicker">Team</p>
+          <h2>Who may change the code and approve a signature.</h2>
+          <p class="sub">
+            MushrifLoop has one maintainer. Anyone else's change comes as a pull request, and nothing from outside the team is merged
+            without that check. Everyone in these roles uses multi-factor authentication for GitHub and for SignPath.
+          </p>
+          <ul class="holds one">
+            <li><b>Committers</b><span>May commit to the repository: <a href="https://github.com/hqudsi">Hani Qudsi</a>.</span></li>
+            <li><b>Reviewers</b><span>Check every change from outside the team before it is merged: <a href="https://github.com/hqudsi">Hani Qudsi</a>.</span></li>
+            <li><b>Approvers</b><span>Approve each signing request: <a href="https://github.com/hqudsi">Hani Qudsi</a>.</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="privacy">
+        <div class="wrap">
+          <p class="kicker">Privacy</p>
+          <h2>What the app sends, and when.</h2>
+          <p class="sub">
+            MushrifLoop has no account, server, analytics or telemetry of its own. Your tasks, settings and logs stay in
+            <code>%APPDATA%\MushrifLoop</code> on your computer. The app sends something over the network only in these cases.
+          </p>
+          <ul class="holds one">
+            <li>
+              <b>New MushrifLoop versions</b>
+              <span>
+                At start and once a day, while <i>Check for new MushrifLoop versions</i> is on (Settings → General; on by default), the app
+                asks GitHub (<code>api.github.com</code>) for this repository's latest release. The request carries the app's name and
+                version, and nothing else. Switch it off and nothing is asked on its own; <i>Check now</i> asks only when you press it.
+              </span>
+            </li>
+            <li>
+              <b>A newer Claude Code</b>
+              <span>
+                Only when you press <i>Check for a newer Claude Code</i> in Settings: the app asks the npm registry
+                (<code>registry.npmjs.org</code>) for the newest published Claude Code version. Nothing about you or your tasks is sent.
+              </span>
+            </li>
+            <li>
+              <b>Updating Claude Code</b>
+              <span>Only when you press <i>Update Claude Code</i>: the app runs Claude Code's own <code>claude update</code>.</span>
+            </li>
+            <li>
+              <b>Claude Code itself</b>
+              <span>
+                The app runs the Claude Code installed on your computer, signed in with your own account. When a task runs, and when the
+                app asks which account is signed in or how much usage is left, Claude Code talks to Anthropic as it does when you use it
+                directly, and <a href="https://www.anthropic.com/legal/privacy">Anthropic's privacy policy</a> applies. MushrifLoop never
+                calls the Anthropic API itself.
+              </span>
+            </li>
+            <li>
+              <b>Links</b>
+              <span>A link in the app opens in your browser, and only when you click it.</span>
+            </li>
+          </ul>
+          <p class="sub after">
+            GitHub and npm see these requests as any website sees a visit, with your IP address; their own privacy statements apply
+            (<a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a>,
+            <a href="https://docs.npmjs.com/policies/privacy">npm</a>).
+          </p>
+        </div>
+      </section>
+
+      <section id="uninstall">
+        <div class="wrap prose">
+          <p class="kicker">Uninstall</p>
+          <h2>Removing it.</h2>
+          <p>
+            The installer adds MushrifLoop to Windows' <b>Installed apps</b>, and it is removed from there like any other app. The
+            uninstaller asks whether to delete your tasks and settings as well. That box starts unticked, so by default they stay. The
+            portable file installs nothing: delete it, and it is gone.
+          </p>
+          <p>
+            Questions about this policy go to the project's <a href="https://github.com/hqudsi/mushrifloop/issues">issues</a>; security
+            problems, as its <a href="https://github.com/hqudsi/mushrifloop/blob/main/SECURITY.md">security policy</a> says.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <p>
+          MushrifLoop is an independent open-source project under the Apache License 2.0. It is not affiliated with, endorsed by, or
+          sponsored by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
+        </p>
+        <p>
+          Built by <a href="https://github.com/hqudsi">Hani Qudsi</a> ·
+          <a href="https://github.com/hqudsi/mushrifloop">GitHub</a> ·
+          <a href="https://github.com/hqudsi/mushrifloop/issues">Report a problem</a> ·
+          <a href="../ar/code-signing/" lang="ar" hreflang="ar">العربية</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

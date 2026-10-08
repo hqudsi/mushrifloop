@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>سياسة التوقيع الرقمي — MushrifLoop</title>
+    <meta
+      name="description"
+      content="كيف تُبنى إصدارات MushrifLoop لويندوز وكيف توقَّع، ومن يوافق على التوقيع، وما الذي يرسله البرنامج عبر الشبكة."
+    />
+    <meta property="og:title" content="سياسة التوقيع الرقمي — MushrifLoop" />
+    <meta property="og:description" content="كيف تُبنى إصدارات MushrifLoop لويندوز وكيف توقَّع، ومن يوافق على التوقيع، وما الذي يرسله البرنامج عبر الشبكة." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hqudsi.github.io/mushrifloop/ar/code-signing/" />
+    <meta property="og:image" content="https://hqudsi.github.io/mushrifloop/img/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="MushrifLoop: جلسة تخطّط، وجلسة تنفّذ، والقرار لك. الـ Planner والـ Executor والحلقة بينهما." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://hqudsi.github.io/mushrifloop/ar/code-signing/" />
+    <link rel="alternate" hreflang="en" href="https://hqudsi.github.io/mushrifloop/code-signing/" />
+    <link rel="alternate" hreflang="ar" href="https://hqudsi.github.io/mushrifloop/ar/code-signing/" />
+    <link rel="alternate" hreflang="x-default" href="https://hqudsi.github.io/mushrifloop/code-signing/" />
+    <link rel="icon" href="../../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../../styles.css?v=9" />
+  </head>
+  <body>
+    <header class="wrap top">
+      <a class="brand" href="../"><img src="../../icon.svg" alt="" /><span dir="ltr">MushrifLoop</span></a>
+      <nav>
+        <a href="../#how">كيف يعمل</a>
+        <a href="../#install">التنصيب</a>
+        <a href="https://github.com/hqudsi/mushrifloop">GitHub</a>
+        <a class="lang" href="../../code-signing/" lang="en" hreflang="en" dir="ltr">English</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap doc-head">
+        <p class="kicker">سياسة التوقيع الرقمي</p>
+        <h1>كيف تُبنى الإصدارات وكيف توقَّع.</h1>
+        <p class="lede">
+          تشرح هذه الصفحة من يوقّع ملفات <span dir="ltr">MushrifLoop</span> لويندوز، وكيف ينتقل الإصدار من الشيفرة المنشورة إلى ملف موقَّع
+          جاهز للتنزيل، ومن يحق له الموافقة على التوقيع، وما الذي يرسله البرنامج عبر الشبكة.
+        </p>
+        <div class="note">
+          <h3>غير موقَّع بعد</h3>
+          <p>
+            يجري الآن إعداد التوقيع عبر SignPath Foundation. الإصدارات حتى 1.7.0، وهو منها، غير موقَّعة، ويعرضها ويندوز على أنها من ناشر
+            غير معروف. أول إصدار موقَّع سيذكر ذلك في ملاحظاته، وتُحذف هذه الملاحظة.
+          </p>
+        </div>
+      </div>
+
+      <section id="signing">
+        <div class="wrap prose">
+          <p class="kicker">التوقيع</p>
+          <h2>من يوقّع الملفات.</h2>
+          <p class="credit">
+            <span dir="ltr" lang="en">Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by
+            <a href="https://signpath.org">SignPath Foundation</a>.</span>
+          </p>
+          <p>أي: التوقيع الرقمي مجاني من SignPath.io، والشهادة من SignPath Foundation.</p>
+          <p>
+            يعرض ويندوز ناشر الإصدار الموقَّع باسم <b>SignPath Foundation</b>. والتوقيع يشهد أن الملف بُني من الشيفرة المصدرية المنشورة لهذا
+            المشروع، وأنه لم يتغيّر بعد ذلك. المفتاح الخاص للشهادة تحفظه SignPath في وحدة أمان عتادية، ولا يملكه المشروع أبداً.
+          </p>
+        </div>
+      </section>
+
+      <section id="build">
+        <div class="wrap prose">
+          <p class="kicker">البناء</p>
+          <h2>يُبنى علناً، ويُوافَق عليه يدوياً.</h2>
+          <ol>
+            <li>
+              كل إصدار يبنيه GitHub Actions، على خوادم يستضيفها GitHub، من المستودع العام
+              <a href="https://github.com/hqudsi/mushrifloop" dir="ltr">github.com/hqudsi/mushrifloop</a> عند وسم (<span dir="ltr">tag</span>)
+              الإصدار. أي ملف بُني في مكان آخر لا يوقَّع أبداً.
+            </li>
+            <li>يوقّع البناء برنامج التطبيق نفسه وكلا الملفين المعروضين للتنزيل: ملف التنصيب والنسخة المحمولة.</li>
+            <li>كل طلب توقيع ينتظر صاحب دور الموافقة، الذي يتأكد أنه آتٍ من إصدار لهذا المستودع قبل أن يوافق عليه.</li>
+            <li>كل إصدار يذكر بصمة SHA-256 لملفاته، ليمكن فحص أي ملف منزَّل بمقارنته بها.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="team">
+        <div class="wrap">
+          <p class="kicker">الفريق</p>
+          <h2>من يحق له تغيير الشيفرة والموافقة على التوقيع.</h2>
+          <p class="sub">
+            يعمل على <span dir="ltr">MushrifLoop</span> مطوّر واحد. أي تغيير من غيره يأتي طلبَ دمج (<span dir="ltr">pull request</span>)، ولا
+            يُدمج شيء من خارج الفريق قبل فحصه. كل من يحمل أحد هذه الأدوار يستخدم التحقق متعدد العوامل في GitHub وفي SignPath.
+          </p>
+          <ul class="holds one">
+            <li><b>الإضافة (<span dir="ltr">Committers</span>)</b><span>يحق لهم إضافة التغييرات إلى المستودع: <a href="https://github.com/hqudsi">هاني قدسي</a>.</span></li>
+            <li><b>الفحص (<span dir="ltr">Reviewers</span>)</b><span>يفحصون كل تغيير يأتي من خارج الفريق قبل دمجه: <a href="https://github.com/hqudsi">هاني قدسي</a>.</span></li>
+            <li><b>الموافقة (<span dir="ltr">Approvers</span>)</b><span>يوافقون على كل طلب توقيع: <a href="https://github.com/hqudsi">هاني قدسي</a>.</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="privacy">
+        <div class="wrap">
+          <p class="kicker">الخصوصية</p>
+          <h2>ما يرسله البرنامج، ومتى.</h2>
+          <p class="sub">
+            ليس لـ <span dir="ltr">MushrifLoop</span> حساب ولا خادم ولا إحصاءات ولا تتبّع خاص به. مهامك وإعداداتك وسجلاتك تبقى في
+            <code>%APPDATA%\MushrifLoop</code> على حاسوبك. ولا يرسل البرنامج شيئاً عبر الشبكة إلا في هذه الحالات.
+          </p>
+          <ul class="holds one">
+            <li>
+              <b>إصدارات <span dir="ltr">MushrifLoop</span> الجديدة</b>
+              <span>
+                عند التشغيل ومرة كل يوم، ما دام خيار <i dir="ltr">Check for new MushrifLoop versions</i> مفعّلاً
+                (<i dir="ltr">Settings → General</i>، وهو مفعّل افتراضياً)، يسأل البرنامج GitHub (<code>api.github.com</code>) عن آخر
+                إصدار لهذا المستودع. يحمل الطلب اسم البرنامج وإصداره، ولا شيء غير ذلك. إن أوقفت الخيار فلا يُسأل شيء من تلقاء نفسه، وزر
+                <i dir="ltr">Check now</i> لا يسأل إلا حين تضغطه.
+              </span>
+            </li>
+            <li>
+              <b>إصدار أحدث من Claude Code</b>
+              <span>
+                فقط حين تضغط <i dir="ltr">Check for a newer Claude Code</i> في الإعدادات: يسأل البرنامج سجل npm
+                (<code>registry.npmjs.org</code>) عن أحدث إصدار منشور من Claude Code. لا يُرسل شيء عنك ولا عن مهامك.
+              </span>
+            </li>
+            <li>
+              <b>تحديث Claude Code</b>
+              <span>فقط حين تضغط <i dir="ltr">Update Claude Code</i>: يشغّل البرنامج أمر التحديث الخاص بـ Claude Code نفسه، <code>claude update</code>.</span>
+            </li>
+            <li>
+              <b>Claude Code نفسه</b>
+              <span>
+                يشغّل البرنامج نسخة Claude Code المنصّبة على حاسوبك، المسجَّلة بحسابك أنت. حين تعمل مهمة، وحين يسأل البرنامج عن الحساب
+                المسجَّل أو عن المتبقي من حدود الاستخدام، يتصل Claude Code بـ Anthropic كما يفعل حين تستخدمه مباشرة، وتسري
+                <a href="https://www.anthropic.com/legal/privacy">سياسة الخصوصية لدى Anthropic</a>. أما <span dir="ltr">MushrifLoop</span> فلا
+                يتصل بواجهة Anthropic البرمجية بنفسه أبداً.
+              </span>
+            </li>
+            <li>
+              <b>الروابط</b>
+              <span>الرابط داخل البرنامج يُفتح في متصفحك، وفقط حين تضغطه.</span>
+            </li>
+          </ul>
+          <p class="sub after">
+            يرى GitHub وnpm هذه الطلبات كما يرى أي موقع زيارةً له، مع عنوان IP الخاص بك، وتسري عليها سياستا الخصوصية لديهما
+            (<a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a>،
+            <a href="https://docs.npmjs.com/policies/privacy">npm</a>).
+          </p>
+        </div>
+      </section>
+
+      <section id="uninstall">
+        <div class="wrap prose">
+          <p class="kicker">الإزالة</p>
+          <h2>إزالة البرنامج.</h2>
+          <p>
+            يضيف ملف التنصيب <span dir="ltr">MushrifLoop</span> إلى قائمة <b dir="ltr">Installed apps</b> في ويندوز، ويُزال من هناك كأي برنامج
+            آخر. ويسأل برنامج الإزالة إن كنت تريد حذف مهامك وإعداداتك أيضاً. هذا الخيار غير محدَّد في البداية، فتبقى بياناتك ما لم تختر غير
+            ذلك. أما النسخة المحمولة فلا تنصّب شيئاً: احذف الملف وينتهي الأمر.
+          </p>
+          <p>
+            الأسئلة عن هذه السياسة تُطرح في <a href="https://github.com/hqudsi/mushrifloop/issues" dir="ltr">issues</a> المشروع، ومشكلات الأمان
+            تُبلَّغ كما تقول <a href="https://github.com/hqudsi/mushrifloop/blob/main/SECURITY.md">سياسة الأمان</a> الخاصة به.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <p>
+          <span dir="ltr">MushrifLoop</span> مشروع مستقل ومفتوح المصدر برخصة Apache 2.0. لا يتبع Anthropic، وليس معتمداً منها ولا برعايتها.
+          <span dir="ltr">"Claude"</span> و<span dir="ltr">"Claude Code"</span> علامتان تجاريتان لـ Anthropic.
+        </p>
+        <p>
+          برمجة <a href="https://github.com/hqudsi">هاني قدسي</a> ·
+          <a href="https://github.com/hqudsi/mushrifloop">GitHub</a> ·
+          <a href="https://github.com/hqudsi/mushrifloop/issues">بلّغ عن مشكلة</a> ·
+          <a href="../../code-signing/" lang="en" hreflang="en" dir="ltr">English</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
