@@ -1,0 +1,112 @@
+# Builds the Windows release on GitHub's own runners, from this repository (SPEC.md §13; the code signing
+# policy: https://hqudsi.github.io/mushrifloop/code-signing/).
+#
+#   - a tag v<version> (it must match package.json): test, build, then a DRAFT release with both files,
+#     their SHA-256 and a build provenance attestation. The maintainer reads the draft and publishes it.
+#   - "Run workflow" (by hand), or a change to this file on main: test and build only. The files stay on
+#     the run as an artifact for 14 days; no release.
+#
+# Not signed yet. Once SignPath Foundation accepts the project, signing goes between the build and the draft.
+# Every action is pinned to a full commit, with its version beside it.
+
+name: Release build
+
+on:
+  push:
+    tags: ['v*.*.*']
+    branches: [main]
+    paths: ['.github/workflows/release.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and build (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      # The repository's files byte for byte: no line-ending conversion on checkout.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: The tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "The tag $env:GITHUB_REF_NAME does not match package.json's version $version." }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run
+      - run: npm run pack
+      - name: SHA-256
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem release -Filter *.exe | Sort-Object Name)
+          if ($files.Count -ne 2) { throw "Expected the installer and the portable exe in release/, found $($files.Count) file(s)." }
+          $lines = $files | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
+          $lines | Set-Content -Encoding ascii release/SHA256SUMS.txt
+          $lines
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-x64
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    name: Draft release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-x64
+          path: out
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: out/*.exe
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          # The product name is in the file names (electron-builder takes it from the app's config).
+          setup="$(basename out/*-"$version"-x64-setup.exe)"
+          product="${setup%-"$version"-x64-setup.exe}"
+          {
+            echo "_Release notes go here._"
+            echo
+            echo "SHA-256:"
+            while read -r sum name; do echo "- \`$name\`: \`$sum\`"; done < out/SHA256SUMS.txt
+            echo
+            echo "Built by GitHub Actions from this tag. To check where a file came from:"
+            echo "\`gh attestation verify <file> -R $REPO\`"
+            echo
+            echo "The installers are not code-signed yet, so Windows SmartScreen may warn on first run (\"More info\" → \"Run anyway\")."
+          } > notes.md
+          gh release create "$TAG" out/*.exe --repo "$REPO" --draft --verify-tag --title "$product $version" --notes-file notes.md

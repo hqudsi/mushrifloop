@@ -90,6 +90,12 @@ files, so you can check that what you downloaded is what was published:
 certutil -hashfile MushrifLoop-<version>-x64-setup.exe SHA256
 ```
 
+Signing through SignPath Foundation is being set up. The [code signing policy](https://hqudsi.github.io/mushrifloop/code-signing/)
+says how releases are built and signed, and exactly what the app sends over the network. Releases after
+1.7.0 are built by GitHub Actions from this repository ([the workflow](.github/workflows/release.yml)), and
+each file carries a build provenance attestation you can check with
+`gh attestation verify <file> -R hqudsi/mushrifloop`.
+
 There is no auto-update. A new version is a new installer from the same page.
 
 ## Your data
