@@ -46,29 +46,35 @@ jobs:
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "The tag $env:GITHUB_REF_NAME does not match package.json's version $version." }
-      # Each step's output also goes to ci.log, for the failure report at the end. (The run's bash has pipefail
-      # on, so a failing command still fails its step through the pipe.)
+      # Each step's output also goes to ci-step.log, for the failure report below: a failing step is the last
+      # to run, so the file then holds its output. (The run's bash has pipefail on, so a failing command still
+      # fails its step through the pipe.)
       - name: Versions
         shell: bash
-        run: '{ echo "node $(node --version), npm $(npm --version)"; } 2>&1 | tee -a ci.log'
+        run: 'echo "node $(node --version), npm $(npm --version)"'
       - shell: bash
-        run: npm ci --no-audit --no-fund 2>&1 | tee -a ci.log
+        run: npm ci --no-audit --no-fund 2>&1 | tee ci-step.log
       - shell: bash
-        run: npm run typecheck 2>&1 | tee -a ci.log
+        run: npm run typecheck 2>&1 | tee ci-step.log
       - shell: bash
-        run: npx vitest run 2>&1 | tee -a ci.log
+        run: npx vitest run 2>&1 | tee ci-step.log
       - shell: bash
-        run: npm run pack 2>&1 | tee -a ci.log
-      # A job's log needs a signed-in admin; an annotation can be read by anyone. On a failure, the last lines
-      # of output (and npm's own log, when npm failed) go into annotations.
+        run: npm run pack 2>&1 | tee ci-step.log
+      # A job's log needs a signed-in admin; an annotation can be read by anyone. On a failure, the failing
+      # step's output (its start and its end when it is long) and npm's own log go into annotations.
       - name: Report a failure where it can be read
         if: failure()
         shell: bash
         run: |
-          annotate() { tail -n 60 "$2" | sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/\r$//' -e 's/%/%25/g' | awk -v t="$1" 'BEGIN{printf "::error title=%s::", t} {printf "%s%%0A", $0} END{print ""}'; }
-          [ -f ci.log ] && annotate "Last output" ci.log
-          npmlog="$(ls -t "$(cygpath -u "$(npm config get cache)")"/_logs/*.log 2>/dev/null | head -n 1 || true)"
-          [ -n "$npmlog" ] && annotate "npm log" "$npmlog"
+          annotate() { sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/\r$//' -e 's/%/%25/g' | awk -v t="$1" 'BEGIN{printf "::error title=%s::", t} {printf "%s%%0A", $0} END{print ""}'; }
+          if [ -f ci-step.log ]; then
+            if [ "$(wc -l < ci-step.log)" -le 80 ]; then annotate "Output of the failing step" < ci-step.log
+            else head -n 30 ci-step.log | annotate "Start of the failing step's output"; tail -n 50 ci-step.log | annotate "End of the failing step's output"; fi
+          fi
+          # logs-max=0: asking npm for its cache folder must not write a log of its own.
+          npmlog="$(ls -t "$(cygpath -u "$(npm config get cache --logs-max=0)")"/_logs/*.log 2>/dev/null | head -n 1 || true)"
+          npmerr="$([ -n "$npmlog" ] && grep -E ' (error|warn) ' "$npmlog" | tail -n 60 || true)"
+          [ -n "$npmerr" ] && printf '%s\n' "$npmerr" | annotate "npm log"
           true
       - name: SHA-256
         shell: pwsh
