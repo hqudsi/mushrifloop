@@ -2,6 +2,10 @@
 
 **[Website](https://hqudsi.github.io/mushrifloop/)** · **[Download](../../releases/latest)** · [العربية](https://hqudsi.github.io/mushrifloop/ar/)
 
+![MushrifLoop running one task: the Planner writes an instruction, it is approved, the Executor carries it out and reports, and the Planner reviews the result and finishes with a report.](media/mushrifloop-loop.gif)
+
+*One real task from start to finish, sped up. Recorded on an earlier version; the default models and effort have changed since.*
+
 *Mushrif* (مشرف) is Arabic for "supervisor". MushrifLoop is a supervised two-agent orchestrator for
 [Claude Code](https://claude.com/claude-code): a Windows desktop app that runs a coding task as a loop
 between two Claude Code sessions on your own computer:
