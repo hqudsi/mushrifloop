@@ -219,6 +219,61 @@
           </button>
         </div>
       </div>
+
+      <!-- SPEC.md §11: the app itself. It only asks; nothing is downloaded or installed. -->
+      <div class="card cc-version">
+        <div class="result-head cc-title">
+          <span>New {{ appName }} versions</span>
+          @if (updates.info(); as u) {
+            <span class="result-time">checked {{ clockOf(u.checkedAt) }}</span>
+          }
+        </div>
+        <div class="kv">
+          <span class="k">Installed</span>
+          <span class="v mono">{{ appName }} {{ store.appInfo()?.appVersion ?? '?' }}</span>
+          @if (updates.info(); as u) {
+            <span class="k">Latest release</span>
+            <span class="v mono">{{ u.latest ? appName + ' ' + u.latest : '—' }}</span>
+          }
+        </div>
+        @if (updates.info(); as u) {
+          <div class="cc-status" [class.ok]="u.newer === false" [class.warn]="u.newer === true" [class.bad]="u.error !== null">
+            @if (u.error) {
+              {{ u.error }}
+            } @else if (u.newer) {
+              {{ appName }} {{ u.latest }} is available. You have {{ u.current }}.
+            } @else {
+              {{ appName }} {{ u.current }} is the latest release.
+            }
+          </div>
+        }
+        <div class="row">
+          <div class="row-text">
+            <span class="row-title">Check for new {{ appName }} versions</span>
+            <span class="row-sub">At start and once a day. When there is one, a line under the title bar says so.</span>
+          </div>
+          <button
+            type="button"
+            class="toggle"
+            [attr.aria-pressed]="settings().general.checkForAppUpdates"
+            (click)="toggleAppUpdates()"
+          >
+            <span></span>
+          </button>
+        </div>
+        <div class="row-controls cc-actions">
+          <button type="button" class="btn" [disabled]="updates.checking()" (click)="updates.checkNow()">
+            {{ updates.checking() ? 'Checking…' : 'Check now' }}
+          </button>
+          @if (updates.info()?.newer === true) {
+            <button type="button" class="btn btn-accent" (click)="downloadUpdate()">Download</button>
+          }
+        </div>
+        <span class="hint cc-hint">
+          The check asks GitHub for the latest {{ appName }} release. Nothing about you or your tasks is sent, and
+          nothing is downloaded or installed: Download opens the release page in your browser.
+        </span>
+      </div>
     }
 
     <!-- ──────────────────────────  Task defaults ─────────────────────────── -->

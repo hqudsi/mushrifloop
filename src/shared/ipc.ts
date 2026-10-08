@@ -47,6 +47,7 @@ export const IPC = {
   claudeCodeUpdate: 'claude-code:update',
   /** main → renderer push channel: `claude update` output as it arrives. */
   claudeCodeUpdateOutput: 'claude-code:update-output',
+  appUpdateCheck: 'app-update:check',
   usageGet: 'usage:get',
   /** main → renderer push channel for task updates (see `onTaskNotice`). */
   tasksNotice: 'tasks:notice',
@@ -317,6 +318,21 @@ export interface ClaudeCodeVersionInfo {
   error: string | null;
 }
 
+/** Settings → General → "New MushrifLoop versions" (SPEC.md §11): the app itself, never Claude Code. */
+export interface AppUpdateInfo {
+  checkedAt: string;
+  /** The running app's version. */
+  current: string;
+  /** The latest published release's version. Null when it could not be read. */
+  latest: string | null;
+  /** Null when the latest version could not be read. */
+  newer: boolean | null;
+  /** The release page Download opens: always a page of the app's repository. */
+  url: string;
+  publishedAt: string | null;
+  error: string | null;
+}
+
 /** The outcome of pressing "Update Claude Code" (SPEC.md §11). */
 export interface ClaudeCodeUpdateResult {
   ok: boolean;
@@ -501,6 +517,11 @@ export interface AppApi {
   checkClaudeCode(): Promise<ClaudeCodeVersionInfo>;
   /** Run `claude update`. Only ever from the button; refused while a task is running (SPEC.md §11). */
   updateClaudeCode(): Promise<ClaudeCodeUpdateResult>;
+  /**
+   * Is a newer MushrifLoop published? Reads only; never downloads (SPEC.md §11). `automatic` is the start and
+   * daily check: it answers null, asking nothing, while the setting is off. Check now passes false.
+   */
+  checkAppUpdate(automatic: boolean): Promise<AppUpdateInfo | null>;
   /** `claude update` output as it arrives. Returns the unsubscribe function. */
   onClaudeCodeUpdateOutput(listener: (chunk: string) => void): () => void;
   /** Plan utilization and the local estimate; `refresh` runs `/usage` when no task is running. */

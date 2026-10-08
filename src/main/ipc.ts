@@ -22,6 +22,7 @@ import {
 import { mergeSettings, type Settings, type ThemeSetting } from '../shared/settings';
 import { buildEnv, testConnection as runTestConnection, resolveClaudeBinary, taskDefaultsVersionBlock } from './claude-cli';
 import { APP_NAME, dataFolder, defaultDataFolder, getStorageInfo, logFile, settingsFile, tasksFolder } from './config';
+import { checkAppUpdate, fetchLatestRelease } from './app-update';
 import { checkClaudeCode, fetchDistTags, updateClaudeCode } from './claude-update';
 import { checkEditorCommand } from './editor';
 import { detectStorageLocation } from './storage-location';
@@ -269,7 +270,15 @@ export function registerIpcHandlers(tasks: TaskService): void {
     log.info('claude_code.update_finished', { ok: result.ok, refused: result.refused, exitCode: result.exitCode, before: result.before, after: result.after });
     return result;
   });
-  ipcMain.handle(IPC.usageGet, (_event, refresh: unknown) => tasks.usage(refresh === true));
+  ipcMain.handle(IPC.appUpdateCheck, async (_event, automatic: unknown) => {
+    // The setting is held here too: with it off, nothing is requested on the app's own initiative (SPEC.md §11).
+    if (automatic !== false && !getSettings().general.checkForAppUpdates) return null;
+    const current = app.getVersion();
+    const result = await checkAppUpdate({ current, fetchLatestRelease: () => fetchLatestRelease(current), now: () => new Date() });
+    log.info('app_update.checked', { automatic: automatic !== false, current, latest: result.latest, newer: result.newer, error: result.error });
+    return result;
+  });
+  ipcMain.handle(IPC.usageGet,(_event, refresh: unknown) => tasks.usage(refresh === true));
   ipcMain.handle(IPC.accountStatus, async () => {
     try {
       return await tasks.accountStatus();

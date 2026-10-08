@@ -44,6 +44,7 @@ const CHANNELS = {
   claudeCodeCheck: 'claude-code:check',
   claudeCodeUpdate: 'claude-code:update',
   claudeCodeUpdateOutput: 'claude-code:update-output',
+  appUpdateCheck: 'app-update:check',
   usageGet: 'usage:get',
   tasksNotice: 'tasks:notice',
 } as const satisfies typeof IPC;
@@ -76,6 +77,7 @@ const api: AppApi = {
   checkEditor: (command: string) => ipcRenderer.invoke(CHANNELS.editorCheck, command),
   checkClaudeCode: () => ipcRenderer.invoke(CHANNELS.claudeCodeCheck),
   updateClaudeCode: () => ipcRenderer.invoke(CHANNELS.claudeCodeUpdate),
+  checkAppUpdate: (automatic: boolean) => ipcRenderer.invoke(CHANNELS.appUpdateCheck, automatic),
   onClaudeCodeUpdateOutput: (listener: (chunk: string) => void) => {
     const handler = (_event: unknown, chunk: unknown) => {
       if (typeof chunk === 'string') listener(chunk);

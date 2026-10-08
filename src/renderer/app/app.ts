@@ -5,6 +5,7 @@ import { stoppingText } from '../../shared/format';
 import { MIN_CLI_VERSION, isVersionBelow } from '../../shared/models';
 import { pendingDefaultChanges } from '../../shared/settings';
 import { api, isBridgeAvailable } from './core/api';
+import { AppUpdateStore } from './core/app-update-store';
 import { SettingsStore } from './core/settings-store';
 import { TasksStore } from './core/tasks-store';
 import { MainScreen } from './features/main/main-screen';
@@ -124,7 +125,8 @@ type View = 'main' | 'settings';
       }
 
       /* "Defaults after an update" (SPEC.md §11): one quiet line, not an alert. */
-      .defaults-line {
+      .defaults-line,
+      .update-line {
         flex: none;
         display: flex;
         align-items: center;
@@ -136,9 +138,15 @@ type View = 'main' | 'settings';
         font-size: 12.5px;
       }
 
-      .defaults-line .text {
+      .defaults-line .text,
+      .update-line .text {
         flex: 1;
         min-width: 0;
+      }
+
+      .update-error {
+        margin-left: 8px;
+        color: var(--danger);
       }
 
       .quit-overlay {
@@ -213,6 +221,18 @@ type View = 'main' | 'settings';
         <button type="button" class="btn mini" (click)="reviewOpen.set(true)">Review</button>
       </div>
     }
+    @if (store.loaded() && !setupOpen() && updates.announce(); as update) {
+      <div class="update-line" role="status">
+        <span class="text">
+          {{ appName }} {{ update.latest }} is available. You have {{ update.current }}.
+          @if (updateError(); as error) {
+            <span class="update-error">{{ error }}</span>
+          }
+        </span>
+        <button type="button" class="btn mini" (click)="downloadUpdate()">Download</button>
+        <button type="button" class="btn mini" (click)="updates.dismiss()">Dismiss</button>
+      </div>
+    }
     <main>
       @if (!bridgeAvailable) {
         <div class="bridge-error callout danger">
@@ -252,6 +272,9 @@ type View = 'main' | 'settings';
 export class AppComponent {
   protected readonly store = inject(SettingsStore);
   protected readonly tasks = inject(TasksStore);
+  protected readonly updates = inject(AppUpdateStore);
+  /** Download could not open the browser: said on the line itself, which is where it was pressed. */
+  protected readonly updateError = signal<string | null>(null);
 
   readonly appName = APP_NAME;
   readonly bridgeAvailable = isBridgeAvailable();
@@ -270,6 +293,8 @@ export class AppComponent {
     if (this.bridgeAvailable) {
       void this.store.load();
       this.tasks.init();
+      // SPEC.md §11: the main process asks nothing while the setting is off.
+      this.updates.start();
     }
 
     // Live: fires when Windows switches theme (while following the system) and when the main
@@ -348,6 +373,11 @@ export class AppComponent {
 
   protected seconds(ms: number): number {
     return Math.round(ms / 1000);
+  }
+
+  protected async downloadUpdate(): Promise<void> {
+    const result = await this.updates.download();
+    this.updateError.set(result.ok ? null : (result.error ?? 'Could not open the release page.'));
   }
 
   /** Ctrl+N: New task (design). */

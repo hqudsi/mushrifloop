@@ -60,6 +60,13 @@ describe('default settings (SPEC.md §11)', () => {
   it('defaults to following the system theme', () => {
     expect(d.general.theme).toBe('system');
   });
+
+  it('checks for new MushrifLoop versions unless switched off, and keeps an older file on (SPEC.md §11)', () => {
+    expect(d.general.checkForAppUpdates).toBe(true);
+    expect(mergeSettings({ general: { theme: 'dark' } }).general.checkForAppUpdates).toBe(true);
+    expect(mergeSettings({ general: { checkForAppUpdates: false } }).general.checkForAppUpdates).toBe(false);
+    expect(mergeSettings({ general: { checkForAppUpdates: 'no' } }).general.checkForAppUpdates).toBe(true);
+  });
 });
 
 describe('mergeSettings', () => {

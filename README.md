@@ -94,9 +94,11 @@ There is no auto-update. A new version is a new installer from the same page.
 
 - Tasks, settings and logs live in `%APPDATA%\MushrifLoop` on your machine. They stay there when you
   uninstall, unless you tick the box that says otherwise.
-- The app collects nothing and has no telemetry. The only network request it makes itself is a check of the
-  npm registry for the latest Claude Code version, to tell you when your CLI is out of date. Everything
-  else on the network is Claude Code's own traffic.
+- The app collects nothing and has no telemetry. It makes two network requests itself, and sends nothing
+  about you or your tasks in either: a check of the npm registry for the latest Claude Code version, to tell
+  you when your CLI is out of date, and a check of GitHub for the latest MushrifLoop release, at start and
+  once a day, to tell you when a new version is out (switch it off in Settings → General). The app never
+  downloads or installs an update itself. Everything else on the network is Claude Code's own traffic.
 - In a project it works on, the Executor may write long evidence to a `.mushrifloop/` folder. That folder is
   never committed.
 

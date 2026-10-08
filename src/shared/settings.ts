@@ -39,6 +39,8 @@ export interface GeneralSettings {
   /** Optional soft cap (SPEC.md §17). null = off. */
   softDailyTokenCap: number | null;
   autoResumeAtReset: boolean;
+  /** SPEC.md §11: ask GitHub at start and once a day whether a newer MushrifLoop is published. */
+  checkForAppUpdates: boolean;
   /**
    * SPEC.md §10: first-run setup has been completed. False on a fresh install — and in a settings
    * file written before setup existed, which is the right answer for it too.
@@ -192,6 +194,7 @@ export function defaultSettings(): Settings {
       editorCommand: 'code',
       softDailyTokenCap: null,
       autoResumeAtReset: false,
+      checkForAppUpdates: true,
       setupCompleted: false,
     },
     taskDefaults: {
@@ -319,6 +322,7 @@ export function mergeSettings(stored: unknown): Settings {
       editorCommand: pickString(general['editorCommand'], d.general.editorCommand),
       softDailyTokenCap: pickNullableInt(general['softDailyTokenCap'], d.general.softDailyTokenCap, 1, 1_000_000_000),
       autoResumeAtReset: pickBoolean(general['autoResumeAtReset'], d.general.autoResumeAtReset),
+      checkForAppUpdates: pickBoolean(general['checkForAppUpdates'], d.general.checkForAppUpdates),
       setupCompleted: pickBoolean(general['setupCompleted'], d.general.setupCompleted),
     },
     taskDefaults: {

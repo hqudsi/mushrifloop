@@ -42,6 +42,7 @@ import {
 } from '../../../../shared/settings';
 import { THIRD_PARTY_LICENSES } from '../../../../shared/third-party-licenses.generated';
 import { api } from '../../core/api';
+import { AppUpdateStore } from '../../core/app-update-store';
 import { SettingsStore } from '../../core/settings-store';
 import { TasksStore } from '../../core/tasks-store';
 import { AccountBlock } from '../../shared/account-block';
@@ -68,6 +69,7 @@ const USE_LABEL: Record<LicenseEntry['usedBy'][number], string> = {
 export class SettingsScreen {
   protected readonly store = inject(SettingsStore);
   private readonly tasks = inject(TasksStore);
+  protected readonly updates = inject(AppUpdateStore);
 
   /** "Back to tasks" (Phase 4: the main screen exists now). */
   readonly back = output<void>();
@@ -385,6 +387,17 @@ export class SettingsScreen {
     this.store.update((d) => {
       d.general.autoResumeAtReset = !d.general.autoResumeAtReset;
     });
+  }
+
+  protected toggleAppUpdates(): void {
+    this.store.update((d) => {
+      d.general.checkForAppUpdates = !d.general.checkForAppUpdates;
+    });
+  }
+
+  protected async downloadUpdate(): Promise<void> {
+    const result = await this.updates.download();
+    if (!result.ok) this.store.error.set(result.error ?? 'Could not open the release page.');
   }
 
   protected stepMaxCycles(delta: number): void {

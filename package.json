@@ -1,6 +1,6 @@
 {
   "name": "mushrifloop",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "description": "A supervised two-agent orchestrator (Planner + Executor) for the Claude Code CLI.",
   "author": "Hani Qudsi",
