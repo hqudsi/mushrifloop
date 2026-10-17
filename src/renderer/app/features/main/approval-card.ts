@@ -50,7 +50,7 @@ type Mode = 'view' | 'edit' | 'reject';
       </div>
     } @else {
       <!-- Verbatim: what you approve is exactly what is sent (no formatting that could hide characters). -->
-      <div class="body text">{{ text() }}</div>
+      <div class="body text bidi">{{ text() }}</div>
     }
 
     @if (w.kind === 'instruction_approval') {
@@ -63,7 +63,7 @@ type Mode = 'view' | 'edit' | 'reject';
         </div>
       }
       @if (w.reasoning) {
-        <div class="line muted">Why: {{ w.reasoning }}</div>
+        <div class="line muted">Why: <bdi>{{ w.reasoning }}</bdi></div>
       }
     }
 

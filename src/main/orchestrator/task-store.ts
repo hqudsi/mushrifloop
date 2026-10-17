@@ -35,6 +35,14 @@ export class TaskStore implements TaskStorePort {
     return path.join(this.taskDir(taskId), 'planner-cwd');
   }
 
+  attachmentsDir(taskId: string): string {
+    return path.join(this.taskDir(taskId), 'attachments');
+  }
+
+  discard(taskId: string): void {
+    fs.rmSync(this.taskDir(taskId), { recursive: true, force: true });
+  }
+
   /** Create the folder layout for a new task. Fails if the task folder already exists. */
   createFolders(taskId: string): void {
     fs.mkdirSync(this.root, { recursive: true });

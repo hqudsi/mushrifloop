@@ -45,6 +45,11 @@ CLI is present, new enough and signed in before it lets you start.
 - **Your time.** A long task runs unattended and calls you only when a decision is yours.
 - **Your tasks, in order.** Grouped by project, searchable, pinned to the top or archived; a deleted task
   goes to the Recycle Bin. The side panels can be widened or narrowed by dragging their edge.
+- **Files and screenshots.** Attach images, PDFs or any file to a task or a message: 📎, drag and drop, or
+  paste a screenshot. Both agents can open them; they stay in the task's folder, never in your project.
+- **Arabic, right to left.** What you write and what the agents write back keeps each paragraph's own
+  direction: Arabic from the right, English from the left, code always left to right. The Planner answers
+  you in your language.
 
 ## What it costs
 

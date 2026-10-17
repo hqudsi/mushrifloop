@@ -39,6 +39,9 @@ export const IPC = {
   tasksCreate: 'tasks:create',
   tasksAction: 'tasks:action',
   tasksDelete: 'tasks:delete',
+  attachmentsPick: 'attachments:pick',
+  attachmentsPreview: 'attachments:preview',
+  attachmentsOpen: 'attachments:open',
   accountStatus: 'account:status',
   tasksChangedFiles: 'tasks:changed-files',
   tasksOpenFile: 'tasks:open-file',
@@ -252,9 +255,9 @@ export type TaskAction =
   | { kind: 'pause' }
   | { kind: 'stop' }
   | { kind: 'resume' }
-  | { kind: 'answer'; text: string }
+  | { kind: 'answer'; text: string; attachments?: AttachmentInput[] }
   /** SPEC.md §6: every message goes to the Planner; there is no recipient to choose. */
-  | { kind: 'send'; text: string }
+  | { kind: 'send'; text: string; attachments?: AttachmentInput[] }
   | { kind: 'waive_skill'; skill: string; note?: string }
   | { kind: 'decline_waiver'; text: string }
   /** Review mode (SPEC.md §7): send the pending instruction, optionally edited. */
@@ -295,9 +298,24 @@ export interface ActionResult {
   blockedBy?: BlockingTask;
 }
 
+/**
+ * A file to attach (SPEC.md §10): a path on disk (the 📎 picker, drag and drop), or the bytes of an image
+ * pasted from the clipboard. The main process copies it into the task's attachments folder.
+ */
+export type AttachmentInput = { path: string } | { name: string; data: Uint8Array };
+
+/** A file chosen with the 📎 picker. */
+export interface PickedFile {
+  path: string;
+  name: string;
+  size: number;
+}
+
 export interface CreateTaskRequest {
   description: string;
   projectDir: string;
+  /** Files attached to the new task (SPEC.md §10). */
+  attachments?: AttachmentInput[];
   /** Per-task overrides of the Task defaults (SPEC.md §11). */
   overrides?: Partial<TaskConfig>;
   /** Start the loop right away. */
@@ -504,6 +522,14 @@ export interface AppApi {
   pickDirectory(title: string, defaultPath?: string): Promise<PickPathResult>;
   pickFile(title: string, defaultPath?: string): Promise<PickPathResult>;
   openPath(target: string): Promise<{ ok: boolean; error?: string }>;
+  /** The 📎 picker: files to attach (SPEC.md §10). Empty when cancelled. */
+  pickAttachments(): Promise<PickedFile[]>;
+  /** The path of a file dropped on the window (Electron's `webUtils`); '' for one that has none. */
+  pathForFile(file: File): string;
+  /** A small preview of an attached image, as a data URL; null for anything else or a missing file. */
+  attachmentPreview(taskId: string, file: string): Promise<string | null>;
+  /** Open an attached file with its program. */
+  openAttachment(taskId: string, file: string): Promise<{ ok: boolean; error?: string }>;
   /** A `mailto:` or `https://` link, handed to the system (mail program, browser). Anything else is refused. */
   openExternal(url: string): Promise<{ ok: boolean; error?: string }>;
   /** Put text on the system clipboard (Settings → About → Copy diagnostics). */

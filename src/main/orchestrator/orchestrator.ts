@@ -79,6 +79,8 @@ import {
   skillOutcomes,
 } from './skills';
 import { restRefusal } from '../../shared/task-list';
+import { attachmentBlock, withAttachments } from '../../shared/attachments';
+import type { Attachment } from '../../shared/task-model';
 import {
   FOLLOW_UP_STATUSES,
   RESUMABLE_STATUSES,
@@ -162,6 +164,11 @@ export interface CreateTaskInput {
   config: TaskConfig;
   /** Normally generated. */
   taskId?: string;
+  /**
+   * Copies the files attached to the new task into its attachments folder (SPEC.md §10) and says what was
+   * copied. Called once the task folder exists; if it throws, the folder is removed and nothing is created.
+   */
+  attach?: (dir: string) => Attachment[];
 }
 
 /** `20260916-181530-a1b2c3` — sortable, and valid inside a git branch name. */
@@ -325,6 +332,15 @@ export class TaskRunner {
     }
     const id = input.taskId ?? makeTaskId(now);
     deps.store.createFolders(id);
+    let attachments: Attachment[] = [];
+    if (input.attach) {
+      try {
+        attachments = input.attach(deps.store.attachmentsDir(id));
+      } catch (err) {
+        deps.store.discard(id);
+        throw new TaskCreationError(`The attached files could not be copied: ${(err as Error).message}`, 'Check the files and try again.');
+      }
+    }
     const stamp = now.toISOString();
     const config = structuredClone(input.config);
     const task: TaskRecord = {
@@ -371,9 +387,10 @@ export class TaskRunner {
       followUpApproval: false,
       queuedMessages: [],
       plannerNotes: [],
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
     const runner = new TaskRunner(task, 0, deps);
-    runner.emit({ type: 'task_created', description, projectDir, config, pinnedAccount: pinned });
+    runner.emit({ type: 'task_created', description, projectDir, config, pinnedAccount: pinned, ...(attachments.length > 0 ? { attachments } : {}) });
     runner.save();
     return runner;
   }
@@ -541,17 +558,21 @@ export class TaskRunner {
   }
 
   /** Answer the Planner's question, or tell it how to go on after a pause (SPEC.md §4 waiting_user). */
-  async answer(text: string): Promise<void> {
+  async answer(text: string, attachments: readonly Attachment[] = []): Promise<void> {
     const waiting = this.requireWaiting(['question', 'possible_loop', 'paused', 'skill_waiver']);
-    const body = this.requireText(text);
+    const body = this.requireText(text, attachments);
     // Replying instead of waiving is declining the waiver; the reply goes to the Planner.
-    if (waiting.kind === 'skill_waiver') return this.declineWaiver(body);
-    this.emit({ type: 'intervention', kind: 'answer', to: 'planner', text: body });
+    if (waiting.kind === 'skill_waiver') {
+      if (attachments.length > 0) throw new TaskStateError('Files cannot be attached to a decision on a required skill.');
+      return this.declineWaiver(body);
+    }
+    this.emit({ type: 'intervention', kind: 'answer', to: 'planner', text: body, ...this.attach(attachments) });
+    const sent = this.withAttachments(body, attachments);
     if (waiting.kind === 'question') {
-      this.task.next = this.plannerStep('answer', answerBlock(waiting.question, body));
+      this.task.next = this.plannerStep('answer', answerBlock(waiting.question, sent));
     } else {
       const note = waiting.kind === 'possible_loop' ? `${loopPauseNote(waiting.reason)}\n\n` : '';
-      this.applyMessage('planner', body, note);
+      this.applyMessage('planner', sent, note);
     }
     return this.continueRunning();
   }
@@ -561,8 +582,8 @@ export class TaskRunner {
    * for the turn to end; in a state that needs Resume it is delivered then; on a task that had
    * finished it reopens the task (§4).
    */
-  async sendMessage(text: string): Promise<void> {
-    const body = this.requireText(text);
+  async sendMessage(text: string, attachments: readonly Attachment[] = []): Promise<void> {
+    const body = this.requireText(text, attachments);
     const { status, waiting } = this.task;
     if (waiting?.kind === 'plan_approval' || waiting?.kind === 'instruction_approval') {
       throw new TaskStateError('The task is waiting for an approval: approve, edit or reject it first.');
@@ -570,9 +591,10 @@ export class TaskRunner {
     if (waiting?.kind === 'skill_waiver') {
       throw new TaskStateError('The task is waiting for a decision on a required skill: waive it, or reply to the planner.');
     }
-    this.emit({ type: 'intervention', kind: 'message', to: 'planner', text: body });
-    if (FOLLOW_UP_STATUSES.includes(status)) return this.followUp(body);
-    this.task.queuedMessages.push({ text: body, at: this.deps.now().toISOString() });
+    this.emit({ type: 'intervention', kind: 'message', to: 'planner', text: body, ...this.attach(attachments) });
+    const sent = this.withAttachments(body, attachments);
+    if (FOLLOW_UP_STATUSES.includes(status)) return this.followUp(sent);
+    this.task.queuedMessages.push({ text: sent, at: this.deps.now().toISOString() });
     this.save();
     if (status === 'waiting_user') return this.continueRunning();
     return this.driving ?? Promise.resolve();
@@ -1108,7 +1130,11 @@ export class TaskRunner {
     this.emit({ type: 'setup', git: structuredClone(git), skills: task.skills.available, skillsError, missingRequiredSkills: missingRequired });
     task.setupDone = true;
     const planFirst = task.config.approvalMode === 'plan_first' && !task.planApproved;
-    task.next = this.plannerStep('start', plannerStartPrompt(task, planFirst));
+    const attached = task.attachments ?? [];
+    task.next = this.plannerStep(
+      'start',
+      plannerStartPrompt(task, planFirst, attached.length > 0 ? attachmentBlock(attached, this.deps.store.attachmentsDir(task.id)) : null),
+    );
     this.save();
   }
 
@@ -1278,6 +1304,7 @@ export class TaskRunner {
     const c = task.config;
     const readOnly = c.plannerContextMode === 'read_only';
     const isPlanner = agent === 'planner';
+    const attached = (task.attachments ?? []).length > 0;
     return {
       agent,
       prompt,
@@ -1285,8 +1312,11 @@ export class TaskRunner {
       model: launch.model,
       effort: launch.effort,
       cwd: isPlanner ? task.plannerCwd : task.projectDir,
-      tools: isPlanner ? (readOnly ? PLANNER_READ_ONLY_TOOLS : []) : c.executorTools,
+      // An isolated Planner has no tools, except Read once the task has attachments: its cwd is an empty
+      // folder and Read outside it is refused, so it sees the attachments folder and nothing else (NOTES.md §66).
+      tools: isPlanner ? (readOnly ? PLANNER_READ_ONLY_TOOLS : attached ? ['Read'] : []) : c.executorTools,
       ...(isPlanner ? {} : { disallowedTools: c.executorDisallowedTools, permissionMode: c.permissionMode }),
+      ...(attached ? { addDirs: [deps.store.attachmentsDir(task.id)] } : {}),
       systemPrompt: session.systemPrompt ?? '',
       schema,
       previousTotals: session.established ? (this.sessionTotals()[session.sessionId] ?? null) : null,
@@ -2043,10 +2073,23 @@ export class TaskRunner {
     return waiting as Extract<WaitingState, { kind: K }>;
   }
 
-  private requireText(text: string): string {
+  /** A message may be only attached files (SPEC.md §10); otherwise it needs text. */
+  private requireText(text: string, attachments: readonly Attachment[] = []): string {
     const body = text.trim();
-    if (!body) throw new TaskStateError('The message is empty.');
+    if (!body && attachments.length === 0) throw new TaskStateError('The message is empty.');
     return body;
+  }
+
+  /** Records files attached to a message on the task; returns the event field (SPEC.md §10). */
+  private attach(attachments: readonly Attachment[]): { attachments?: Attachment[] } {
+    if (attachments.length === 0) return {};
+    this.task.attachments = [...(this.task.attachments ?? []), ...attachments];
+    return { attachments: [...attachments] };
+  }
+
+  /** What the agent receives: the text, then the [ATTACHED FILES] lines. */
+  private withAttachments(body: string, attachments: readonly Attachment[]): string {
+    return withAttachments(body, attachments, this.deps.store.attachmentsDir(this.task.id));
   }
 
   // -------------------------------------------------------------------------

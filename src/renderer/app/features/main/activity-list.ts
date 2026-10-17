@@ -36,7 +36,7 @@ import type { TurnActivity } from '../../../../shared/turn-activity';
             }
           }
           @case ('text') {
-            <div class="text" [class.sub]="row.subagent">“{{ row.summary }}”</div>
+            <div class="text bidi" [class.sub]="row.subagent">“{{ row.summary }}”</div>
           }
           @case ('stderr') {
             <div class="output">stderr: {{ row.summary }}</div>

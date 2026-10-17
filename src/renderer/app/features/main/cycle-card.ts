@@ -62,13 +62,13 @@ type CycleItem = Extract<TimelineItem, { kind: 'cycle' }>;
             }
           }
           @if (planner.output?.reasoning_summary; as why) {
-            <div class="why">{{ why }}</div>
+            <div class="why bidi">{{ why }}</div>
           }
         </div>
       }
 
       @if (executor().summary?.userMessage ?? userMessage(); as message) {
-        <div class="user-line"><span class="you">You → Executor</span> {{ message }}</div>
+        <div class="user-line"><span class="you">You → Executor</span> <bdi>{{ message }}</bdi></div>
       }
 
       @for (attempt of item().attempts; track attempt.turnId) {
@@ -108,7 +108,7 @@ type CycleItem = Extract<TimelineItem, { kind: 'cycle' }>;
             <div class="caps">WHAT CHANGED</div>
             <div class="value"><app-rich-text [text]="out.summary" /></div>
             @if (out.question) {
-              <div class="value question">Asks: {{ out.question }}</div>
+              <div class="value question">Asks: <bdi>{{ out.question }}</bdi></div>
             }
           </div>
           <div>
@@ -126,13 +126,13 @@ type CycleItem = Extract<TimelineItem, { kind: 'cycle' }>;
               <div class="muted">Not run</div>
             }
             @if (out.tests.notes) {
-              <div class="muted small">{{ out.tests.notes }}</div>
+              <div class="muted small bidi">{{ out.tests.notes }}</div>
             }
           </div>
           <div>
             <div class="caps">PROBLEMS</div>
             @for (p of out.problems; track $index) {
-              <div class="value">{{ p }}</div>
+              <div class="value bidi">{{ p }}</div>
             } @empty {
               <div class="muted">None</div>
             }

@@ -39,6 +39,10 @@ export interface InitProbeResult {
 export interface TaskStorePort {
   createFolders(taskId: string): void;
   plannerCwd(taskId: string): string;
+  /** Where attached files are copied (SPEC.md §10). Created on first use. */
+  attachmentsDir(taskId: string): string;
+  /** Remove a task folder that was never written (a new task whose files could not be copied). */
+  discard(taskId: string): void;
   rawDir(taskId: string): string;
   writeTask(task: TaskRecord): void;
   appendEvent(taskId: string, event: TaskEvent): void;

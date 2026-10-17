@@ -13,7 +13,7 @@
  * type-only import, erased at runtime) makes the compiler reject any drift from the contract.
  */
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 import type { BRIDGE_ARG as BridgeArg } from '../shared/app-config';
 import type { AppApi, CreateTaskRequest, IPC, TaskAction, TaskNoticeMessage } from '../shared/ipc';
@@ -37,6 +37,9 @@ const CHANNELS = {
   tasksCreate: 'tasks:create',
   tasksAction: 'tasks:action',
   tasksDelete: 'tasks:delete',
+  attachmentsPick: 'attachments:pick',
+  attachmentsPreview: 'attachments:preview',
+  attachmentsOpen: 'attachments:open',
   accountStatus: 'account:status',
   tasksChangedFiles: 'tasks:changed-files',
   tasksOpenFile: 'tasks:open-file',
@@ -64,6 +67,10 @@ const api: AppApi = {
     ipcRenderer.invoke(CHANNELS.dialogPickDirectory, title, defaultPath),
   pickFile: (title: string, defaultPath?: string) => ipcRenderer.invoke(CHANNELS.dialogPickFile, title, defaultPath),
   openPath: (target: string) => ipcRenderer.invoke(CHANNELS.shellOpenPath, target),
+  pickAttachments: () => ipcRenderer.invoke(CHANNELS.attachmentsPick),
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
+  attachmentPreview: (taskId: string, file: string) => ipcRenderer.invoke(CHANNELS.attachmentsPreview, taskId, file),
+  openAttachment: (taskId: string, file: string) => ipcRenderer.invoke(CHANNELS.attachmentsOpen, taskId, file),
   openExternal: (url: string) => ipcRenderer.invoke(CHANNELS.shellOpenExternal, url),
   copyText: (text: string) => ipcRenderer.invoke(CHANNELS.clipboardWrite, text),
   listTasks: () => ipcRenderer.invoke(CHANNELS.tasksList),

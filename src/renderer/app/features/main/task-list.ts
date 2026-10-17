@@ -161,7 +161,7 @@ function store(key: string, value: unknown): void {
           (contextmenu)="openMenu($event, task)"
         >
           <div class="row1">
-            <span class="title" title="Double-click to rename · ⋯ or right-click for Rename, Pin, Archive, Delete">{{ task.title }}</span>
+            <span class="title" dir="auto" title="Double-click to rename · ⋯ or right-click for Rename, Pin, Archive, Delete">{{ task.title }}</span>
             @if (task.pinnedToTop) {
               <span class="pin" title="Pinned to top" aria-label="pinned">⇡</span>
             }

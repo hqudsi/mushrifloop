@@ -498,6 +498,19 @@ export interface RateLimitState {
   autoResumeSkipped?: { at: string; blockedBy: { taskId: string; title: string } } | null;
 }
 
+export type AttachmentKind = 'image' | 'pdf' | 'other';
+
+/** A file the user attached (SPEC.md §10, attachments): a copy in the task's `attachments/` folder. */
+export interface Attachment {
+  /** Its name in the attachments folder (`03-screenshot.png`): unique within the task. */
+  file: string;
+  /** The name it had when attached. */
+  name: string;
+  size: number;
+  kind: AttachmentKind;
+  at: string;
+}
+
 export interface TaskRecord {
   schemaVersion: 1;
   id: string;
@@ -565,6 +578,11 @@ export interface TaskRecord {
    * turn to spawn carries them at the top of its prompt.
    */
   plannerNotes: string[];
+  /**
+   * Every file attached to the task so far, in order (SPEC.md §10). When there is any, both agents may read
+   * the attachments folder (`--add-dir`), and an isolated Planner gets Read for it. Absent: none.
+   */
+  attachments?: Attachment[];
 }
 
 // ---------------------------------------------------------------------------
@@ -716,7 +734,7 @@ export type InterventionKind =
   | 'decline_waiver';
 
 type EventBody =
-  | { type: 'task_created'; description: string; projectDir: string; config: TaskConfig; pinnedAccount: PinnedAccount }
+  | { type: 'task_created'; description: string; projectDir: string; config: TaskConfig; pinnedAccount: PinnedAccount; attachments?: Attachment[] }
   | { type: 'status'; from: TaskStatus; to: TaskStatus; reason: string | null; waiting: WaitingState | null }
   | { type: 'setup'; git: GitState; skills: string[] | null; skillsError: string | null; missingRequiredSkills: string[] }
   | {
@@ -748,7 +766,7 @@ type EventBody =
   | { type: 'rollover_skipped'; agent: AgentRole; reason: string; attempts: number }
   /** After a refused-answer failure the step was sent again with a changed request (SPEC.md §5 net 11). */
   | { type: 'answer_retry'; agent: AgentRole; purpose: TurnRecord['purpose']; turnId: string; attempt: number; variation: string; refusals: number }
-  | { type: 'intervention'; kind: InterventionKind; to?: AgentRole; text?: string; edited?: boolean }
+  | { type: 'intervention'; kind: InterventionKind; to?: AgentRole; text?: string; edited?: boolean; attachments?: Attachment[] }
   | { type: 'rate_limit'; status: string; resetsAt: number | null; rateLimitType: string | null; turnId: string }
   | { type: 'auto_resume_scheduled'; at: string }
   | { type: 'auto_resume_skipped'; blockedBy: { taskId: string; title: string } }

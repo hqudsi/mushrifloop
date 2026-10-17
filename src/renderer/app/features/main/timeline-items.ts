@@ -9,6 +9,7 @@ import { formatClock } from '../../../../shared/format';
 import { ROLLOVER_HINT, type TimelineItem } from '../../../../shared/timeline';
 import { TasksStore } from '../../core/tasks-store';
 import { agentModelNote, agentModelText } from '../../shared/model-text';
+import { AttachmentList } from '../../shared/attachments';
 import { RichText } from '../../shared/rich-text';
 import { AnswerCheckLine, TurnError, turnMeta } from './turn-parts';
 
@@ -65,7 +66,7 @@ const cardStyles = `
 @Component({
   selector: 'app-start-card',
   standalone: true,
-  imports: [RichText],
+  imports: [AttachmentList, RichText],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="tl-card">
@@ -75,7 +76,12 @@ const cardStyles = `
         <span class="what">starting point</span>
         <span class="meta">{{ clock() }}</span>
       </div>
-      <div class="body"><app-rich-text [text]="item().description" /></div>
+      <div class="body">
+        <app-rich-text [text]="item().description" />
+        @if (item().attachments; as files) {
+          <app-attachment-list [taskId]="taskId()" [items]="files" />
+        }
+      </div>
       <dl>
         <dt>Project</dt>
         <dd class="mono">{{ item().projectDir }}</dd>
@@ -97,7 +103,7 @@ const cardStyles = `
             <dt>Your work</dt>
             <dd>
               uncommitted changes committed first as
-              <span class="mono">{{ snap.hash.slice(0, 7) }}</span> “{{ snap.message }}” —
+              <span class="mono">{{ snap.hash.slice(0, 7) }}</span> “<bdi>{{ snap.message }}</bdi>” —
               {{ snap.files.length }} file{{ snap.files.length === 1 ? '' : 's' }}
               <span class="files mono">{{ snap.files.join(', ') }}</span>
             </dd>
@@ -164,6 +170,7 @@ const cardStyles = `
 export class StartCard {
   readonly item = input.required<StartItem>();
   private readonly tasks = inject(TasksStore);
+  protected readonly taskId = computed(() => this.tasks.selectedId() ?? '');
   protected readonly clock = computed(() => formatClock(this.item().at));
   /** What the configured model runs as on the installed CLI; each turn card shows what actually ran (SPEC.md §8). */
   protected agent(which: 'planner' | 'executor'): string {
@@ -338,6 +345,7 @@ export class NoteItem {
 @Component({
   selector: 'app-user-item',
   standalone: true,
+  imports: [AttachmentList],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="tl-card user">
@@ -347,7 +355,10 @@ export class NoteItem {
         <span class="meta">{{ clock() }}</span>
       </div>
       @if (item().text) {
-        <div class="body">{{ item().text }}</div>
+        <div class="body bidi">{{ item().text }}</div>
+      }
+      @if (item().attachments; as files) {
+        <div class="files"><app-attachment-list [taskId]="taskId()" [items]="files" /></div>
       }
     </div>
   `,
@@ -371,11 +382,19 @@ export class NoteItem {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
+      .files {
+        padding: 0 14px 12px;
+      }
+      .body + .files app-attachment-list {
+        margin-top: 0;
+      }
     `,
   ],
 })
 export class UserItem {
   readonly item = input.required<UserData>();
+  private readonly tasks = inject(TasksStore);
+  protected readonly taskId = computed(() => this.tasks.selectedId() ?? '');
   protected readonly clock = computed(() => formatClock(this.item().at));
 }
 

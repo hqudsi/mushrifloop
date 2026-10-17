@@ -35,6 +35,7 @@ import { formatTokens } from '../../../../shared/format';
 import { api } from '../../core/api';
 import { SettingsStore } from '../../core/settings-store';
 import { TasksStore } from '../../core/tasks-store';
+import { AttachmentDraft, AttachmentTray } from '../../shared/attachments';
 
 const LAST_FOLDER_KEY = storageKey('lastProjectFolder');
 const INSPECT_DEBOUNCE_MS = 300;
@@ -61,6 +62,7 @@ function readLastFolder(): string {
 @Component({
   selector: 'app-new-task-dialog',
   standalone: true,
+  imports: [AttachmentTray],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(keydown)': 'onKey($event)' },
   template: `
@@ -93,7 +95,13 @@ function readLastFolder(): string {
           </div>
 
           <!-- Description -->
-          <div class="field">
+          <div
+            class="field"
+            [class.dropping]="dropping()"
+            (dragover)="onDragOver($event)"
+            (dragleave)="dropping.set(false)"
+            (drop)="onDrop($event)"
+          >
             <label class="label" for="nt-desc">Task description</label>
             <textarea
               #description
@@ -102,7 +110,13 @@ function readLastFolder(): string {
               placeholder="What should the Planner and Executor achieve? The first line becomes the task's title."
               [value]="descriptionText()"
               (input)="descriptionText.set($any($event.target).value)"
+              (paste)="onPaste($event)"
             ></textarea>
+            <div class="attach-row">
+              <button type="button" class="btn" [disabled]="submitting()" (click)="files.pick()">📎 Attach files</button>
+              <span class="hint">or drop them here, or paste an image. The agents can read images, PDFs and text.</span>
+            </div>
+            <app-attachment-tray [items]="files.items()" [problem]="files.problem()" (removed)="files.remove($event)" />
           </div>
 
           <!-- Models -->
@@ -282,7 +296,7 @@ function readLastFolder(): string {
           @if (running(); as other) {
             <div class="callout warn">
               A task is already running:
-              <button type="button" class="link" (click)="openRunning(other.id)">{{ other.title }}</button>.
+              <button type="button" class="link" (click)="openRunning(other.id)"><bdi>{{ other.title }}</bdi></button>.
               Tasks run one at a time, so this one is saved as a draft — start it once that one is paused or finished.
             </div>
           }
@@ -381,6 +395,17 @@ function readLastFolder(): string {
         min-height: 96px;
         font-size: 13px;
         color: var(--text);
+      }
+      /* Files for the new task (SPEC.md §10). */
+      .attach-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .field.dropping .desc {
+        border-color: var(--planner);
+        border-style: dashed;
       }
       .grid-2 {
         display: grid;
@@ -585,6 +610,8 @@ export class NewTaskDialog {
   private readonly defaults = this.settings.saved().taskDefaults;
   protected readonly folder = signal(readLastFolder());
   protected readonly descriptionText = signal('');
+  protected readonly files = new AttachmentDraft();
+  protected readonly dropping = signal(false);
   protected readonly planner = signal<AgentChoice>({ model: this.defaults.plannerModel, effort: this.defaults.plannerEffort });
   protected readonly executor = signal<AgentChoice>({ model: this.defaults.executorModel, effort: this.defaults.executorEffort });
   protected readonly maxCycles = signal(this.defaults.maxCycles);
@@ -795,6 +822,29 @@ export class NewTaskDialog {
     this.store.newTaskOpen.set(false);
   }
 
+  protected onDragOver(event: DragEvent): void {
+    if (!event.dataTransfer?.types.includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    this.dropping.set(true);
+  }
+
+  protected onDrop(event: DragEvent): void {
+    this.dropping.set(false);
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void this.files.addFiles(files);
+  }
+
+  /** A pasted image (a screenshot) becomes an attachment; pasted text stays text. */
+  protected onPaste(event: ClipboardEvent): void {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void this.files.addFiles(files);
+  }
+
   protected onKey(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -810,9 +860,11 @@ export class NewTaskDialog {
     this.submitting.set(true);
     this.error.set(null);
     const folder = this.folder().trim();
+    const attachments = this.files.inputs();
     const request: CreateTaskRequest = {
       description: this.descriptionText().trim(),
       projectDir: folder,
+      ...(attachments.length > 0 ? { attachments } : {}),
       overrides: {
         planner: this.planner(),
         executor: this.executor(),

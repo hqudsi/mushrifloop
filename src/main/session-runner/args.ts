@@ -24,10 +24,20 @@ export interface ArgsInput {
   tools: readonly string[];
   disallowedTools?: readonly string[];
   permissionMode?: 'dontAsk' | 'bypassPermissions';
+  /** `--add-dir`: folders readable besides the cwd (the task's attachments, NOTES.md §66). */
+  addDirs?: readonly string[];
 }
 
 /** Tools the planner may be given: none, or the read-only set (SPEC.md §3.1). */
 export const PLANNER_READ_ONLY_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
+
+/**
+ * `--add-dir <dir>` once per folder. The flag is variadic, which is harmless here: the prompt goes on stdin
+ * and every flag that follows starts with `--` (NOTES.md §1).
+ */
+function addDirArgs(dirs: readonly string[] | undefined): string[] {
+  return (dirs ?? []).flatMap((d) => ['--add-dir', d]);
+}
 
 export class InvalidTurnError extends Error {
   constructor(message: string) {
@@ -72,6 +82,7 @@ export function buildTurnArgs(input: ArgsInput): string[] {
     // Nothing from disk: no user settings, plugins or CLAUDE.md in the planner (NOTES.md §7.5).
     args.push('--setting-sources', '');
     args.push('--system-prompt-file', input.systemPromptFile);
+    args.push(...addDirArgs(input.addDirs));
     return args;
   }
 
@@ -86,6 +97,7 @@ export function buildTurnArgs(input: ArgsInput): string[] {
   if (input.permissionMode === 'bypassPermissions') args.push('--dangerously-skip-permissions');
   else args.push('--permission-mode', 'dontAsk');
   if (input.systemPromptFile !== null) args.push('--append-system-prompt-file', input.systemPromptFile);
+  args.push(...addDirArgs(input.addDirs));
   return args;
 }
 

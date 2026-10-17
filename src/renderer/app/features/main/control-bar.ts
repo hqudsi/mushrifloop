@@ -12,6 +12,7 @@ import type { TaskAction } from '../../../../shared/ipc';
 import { coldSessionNote } from '../../../../shared/session-age';
 import type { TaskRecord } from '../../../../shared/task-model';
 import { TasksStore } from '../../core/tasks-store';
+import { AttachmentDraft, AttachmentTray } from '../../shared/attachments';
 
 type Mode = 'none' | 'reopen' | 'answer' | 'waiver' | 'paused' | 'approval' | 'running' | 'queued' | 'draft';
 
@@ -88,6 +89,7 @@ const MODES: Record<Mode, ModeInfo> = {
 @Component({
   selector: 'app-control-bar',
   standalone: true,
+  imports: [AttachmentTray],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="content-column bar">
@@ -95,7 +97,7 @@ const MODES: Record<Mode, ModeInfo> = {
         <div class="callout danger" role="alert">
           @if (error.blockedBy; as other) {
             A task is already running:
-            <button type="button" class="link" (click)="store.openTask(other.taskId)" [title]="'Open ' + other.title">{{ other.title }}</button>
+            <button type="button" class="link" (click)="store.openTask(other.taskId)" [title]="'Open ' + other.title"><bdi>{{ other.title }}</bdi></button>
           } @else {
             {{ error.message }}
           }
@@ -138,23 +140,45 @@ const MODES: Record<Mode, ModeInfo> = {
             <span class="glyph">■</span>Stop
           </button>
         </div>
-        <div class="composer" [class.urgent]="info().urgent && info().enabled" [class.disabled]="!info().enabled">
+        <div
+          class="composer"
+          [class.urgent]="info().urgent && info().enabled"
+          [class.disabled]="!info().enabled"
+          [class.dropping]="dropping()"
+          (dragover)="onDragOver($event)"
+          (dragleave)="dropping.set(false)"
+          (drop)="onDrop($event)"
+        >
           @if (mode() !== 'none') {
             <span class="to" title="Every message goes to the Planner (SPEC §6)">
               <span class="rdot"></span>To Planner
             </span>
           }
-          <textarea
-            class="input-box"
-            rows="1"
-            [placeholder]="info().placeholder"
-            [disabled]="!info().enabled"
-            [value]="text()"
-            (input)="text.set($any($event.target).value)"
-            (keydown)="onKey($event)"
-            aria-label="Message"
-          ></textarea>
+          <div class="field">
+            <app-attachment-tray [items]="files.items()" [problem]="files.problem()" (removed)="files.remove($event)" />
+            <textarea
+              class="input-box"
+              rows="1"
+              [placeholder]="info().placeholder"
+              [disabled]="!info().enabled"
+              [value]="text()"
+              (input)="text.set($any($event.target).value)"
+              (keydown)="onKey($event)"
+              (paste)="onPaste($event)"
+              aria-label="Message"
+            ></textarea>
+          </div>
           @if (mode() !== 'none') {
+            @if (canAttach()) {
+              <button
+                type="button"
+                class="clip"
+                title="Attach files — or drop them here, or paste an image"
+                aria-label="Attach files"
+                [disabled]="busyAction()"
+                (click)="files.pick()"
+              >📎</button>
+            }
             <button type="button" class="send" [disabled]="!canSend()" (click)="send()">Send</button>
           }
         </div>
@@ -334,6 +358,40 @@ const MODES: Record<Mode, ModeInfo> = {
       .input-box:disabled {
         color: var(--text-muted);
       }
+      /* Files waiting to go with the message sit above its text, inside the box (SPEC.md §10). */
+      .field {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .field app-attachment-tray:not(:empty) {
+        padding: 8px 12px 0;
+      }
+      .composer.dropping {
+        border-color: var(--planner);
+        border-style: dashed;
+      }
+      .clip {
+        flex: none;
+        height: 24px;
+        margin: 4px 0 4px 4px;
+        padding: 0 6px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--text-3);
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .clip:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text);
+      }
+      .clip:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
       .send {
         flex: none;
         height: 24px;
@@ -434,7 +492,16 @@ export class ControlBar {
     return t.status === 'waiting_user' && (t.waiting?.kind === 'paused' || t.waiting?.kind === 'possible_loop');
   });
   protected readonly resumeKind = computed<'start' | 'resume'>(() => (this.task()?.status === 'draft' ? 'start' : 'resume'));
-  protected readonly canSend = computed(() => this.info().enabled && this.text().trim() !== '' && !this.busyAction());
+  /** Files go with a message or an answer; a decision on a required skill takes words only (SPEC.md §10). */
+  protected readonly files = new AttachmentDraft();
+  protected readonly dropping = signal(false);
+  protected readonly canAttach = computed(() => this.info().enabled && this.mode() !== 'waiver');
+  protected readonly canSend = computed(
+    () =>
+      this.info().enabled &&
+      !this.busyAction() &&
+      (this.text().trim() !== '' || (this.canAttach() && this.files.items().length > 0)),
+  );
 
   constructor() {
     // A different task starts with an empty composer.
@@ -444,6 +511,7 @@ export class ControlBar {
       if (id !== lastId) {
         lastId = id;
         this.text.set('');
+        this.files.clear();
       }
     });
   }
@@ -462,20 +530,50 @@ export class ControlBar {
   protected send(): void {
     if (!this.canSend()) return;
     const text = this.text().trim();
+    const attachments = this.canAttach() ? this.files.inputs() : [];
+    const withFiles = attachments.length > 0 ? { attachments } : {};
     let action: TaskAction;
     switch (this.mode()) {
       case 'answer':
       case 'paused':
-        action = { kind: 'answer', text };
+        action = { kind: 'answer', text, ...withFiles };
         break;
       case 'waiver':
         action = { kind: 'decline_waiver', text };
         break;
       default:
-        action = { kind: 'send', text };
+        action = { kind: 'send', text, ...withFiles };
     }
     void this.store.act(action).then((ok) => {
-      if (ok) this.text.set('');
+      if (ok) {
+        this.text.set('');
+        this.files.clear();
+      }
     });
+  }
+
+  protected onDragOver(event: DragEvent): void {
+    if (!this.canAttach() || !event.dataTransfer?.types.includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    this.dropping.set(true);
+  }
+
+  protected onDrop(event: DragEvent): void {
+    this.dropping.set(false);
+    if (!this.canAttach()) return;
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void this.files.addFiles(files);
+  }
+
+  /** A pasted image (a screenshot) becomes an attachment; pasted text stays text. */
+  protected onPaste(event: ClipboardEvent): void {
+    if (!this.canAttach()) return;
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void this.files.addFiles(files);
   }
 }

@@ -19,7 +19,7 @@ import { TasksStore } from '../../core/tasks-store';
       <div class="backdrop" (mousedown)="$event.target === $event.currentTarget && close()">
         <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="del-title" aria-describedby="del-body">
           <div class="top">
-            <span id="del-title" class="title">Delete “{{ t.title }}”?</span>
+            <span id="del-title" class="title">Delete “<bdi>{{ t.title }}</bdi>”?</span>
             <button type="button" class="close" aria-label="Close" [disabled]="busy()" (click)="close()">✕</button>
           </div>
           <div class="body" id="del-body">

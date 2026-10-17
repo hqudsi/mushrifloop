@@ -89,6 +89,7 @@ export async function runTurn<T = unknown>(
     tools: spec.tools,
     ...(spec.disallowedTools ? { disallowedTools: spec.disallowedTools } : {}),
     ...(spec.permissionMode ? { permissionMode: spec.permissionMode } : {}),
+    ...(spec.addDirs && spec.addDirs.length > 0 ? { addDirs: spec.addDirs } : {}),
   });
 
   const startedAt = new Date();

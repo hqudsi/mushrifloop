@@ -101,10 +101,12 @@ export function systemPromptFor(agent: AgentRole, role: string, task: TaskRecord
 // Planner turns
 // ---------------------------------------------------------------------------
 
-export function plannerStartPrompt(task: TaskRecord, planFirst: boolean): string {
+/** `attachments`: the [ATTACHED FILES] lines for files attached to the new task, or null (SPEC.md §10). */
+export function plannerStartPrompt(task: TaskRecord, planFirst: boolean, attachments: string | null = null): string {
   const lines = [
     '[TASK]',
     task.description.trim(),
+    ...(attachments ? ['', attachments] : []),
     '',
     `Project folder name: ${path.basename(task.projectDir)} (the executor works in its root).`,
     `Limit: at most ${task.config.maxCycles} executor turns for this task.`,

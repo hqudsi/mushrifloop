@@ -6,7 +6,7 @@
  * (CLAUDE.md: errors surface with the raw message and a next step).
  */
 
-import { BrowserWindow, app, clipboard, dialog, ipcMain, shell } from 'electron';
+import { BrowserWindow, app, clipboard, dialog, ipcMain, nativeImage, shell } from 'electron';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -15,6 +15,7 @@ import {
   IPC,
   type AppInfo,
   type ClaudeBinaryInfo,
+  type PickedFile,
   type PickPathResult,
   type SaveSettingsResult,
   type TestConnectionResult,
@@ -211,6 +212,35 @@ export function registerIpcHandlers(tasks: TaskService): void {
       log.error('task.action_failed', { taskId, error: errorMessage(err) });
       return { ok: false, error: errorMessage(err) };
     }
+  });
+  // Attachments (SPEC.md §10). The picker allows several files; preview and open take only a file the task
+  // recorded, inside its attachments folder.
+  ipcMain.handle(IPC.attachmentsPick, async (): Promise<PickedFile[]> => {
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const options = { title: 'Attach files', properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'> };
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    if (result.canceled) return [];
+    return result.filePaths.flatMap((p) => {
+      try {
+        return [{ path: p, name: path.basename(p), size: fs.statSync(p).size }];
+      } catch {
+        return [];
+      }
+    });
+  });
+  ipcMain.handle(IPC.attachmentsPreview, (_event, taskId: unknown, file: unknown): string | null => {
+    const found = typeof taskId === 'string' && typeof file === 'string' ? tasks.attachmentPath(taskId, file) : null;
+    if (!found || found.kind !== 'image') return null;
+    const image = nativeImage.createFromPath(found.path);
+    if (image.isEmpty()) return null;
+    const { width } = image.getSize();
+    return (width > 320 ? image.resize({ width: 320 }) : image).toDataURL();
+  });
+  ipcMain.handle(IPC.attachmentsOpen, async (_event, taskId: unknown, file: unknown) => {
+    const found = typeof taskId === 'string' && typeof file === 'string' ? tasks.attachmentPath(taskId, file) : null;
+    if (!found) return { ok: false, error: 'That file is not attached to this task.' };
+    const error = await shell.openPath(found.path);
+    return error ? { ok: false, error } : { ok: true };
   });
   ipcMain.handle(IPC.tasksDelete, async (_event, taskId: unknown) => {
     if (typeof taskId !== 'string') return { ok: false, error: 'Invalid task id.' };

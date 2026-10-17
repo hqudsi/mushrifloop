@@ -40,6 +40,11 @@ export interface TurnSpec {
   tools: readonly string[];
   /** Executor only: `--disallowedTools`. */
   disallowedTools?: readonly string[];
+  /**
+   * Folders the agent may read besides its cwd (`--add-dir`, NOTES.md §66): the task's attachments folder
+   * once the task has an attachment (SPEC.md §10).
+   */
+  addDirs?: readonly string[];
   /** Executor only. Defaults to `dontAsk` (SPEC.md §3.1). */
   permissionMode?: PermissionMode;
   /**

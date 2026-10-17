@@ -590,6 +590,27 @@ textarea {
 .pill.error { background: var(--error-bg); color: var(--error); }
 .pill.warn { background: var(--executor-bg); color: var(--executor); }
 
+/*
+ * Text people and agents write (SPEC.md §10, right-to-left text): each paragraph takes the direction of its
+ * first letter, so an Arabic paragraph runs right to left and aligns right while an English one stays as it
+ * is. The interface itself stays left to right.
+ */
+.bidi,
+textarea,
+input:not([type]),
+input[type='text'],
+input[type='search'] {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+/* Code keeps left to right inside a right-to-left paragraph. */
+code,
+pre {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 code.inline {
   font: 12px var(--font-mono);
   color: var(--text);

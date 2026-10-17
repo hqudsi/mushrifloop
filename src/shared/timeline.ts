@@ -14,6 +14,7 @@ import { turnShareReader } from './turn-cost';
 import type {
   AgentRole,
   AnswerCheck,
+  Attachment,
   CommitInfo,
   ConfigChangeEntry,
   CycleSummary,
@@ -100,6 +101,8 @@ export type TimelineItem =
       setup: SetupInfo | null;
       /** The user's pre-existing uncommitted work, committed before cycle 1. */
       snapshot: Extract<CommitInfo, { state: 'committed' }> | null;
+      /** Files attached to the new task (SPEC.md §10). */
+      attachments?: Attachment[];
     }
   | {
       kind: 'cycle';
@@ -123,7 +126,7 @@ export type TimelineItem =
       card: TurnCardBase;
       rollover: { oldSessionId: string; newSessionId: string; reason: string; summary: HandoffSummary | null } | null;
     }
-  | { kind: 'user'; key: string; at: string; to: AgentRole | null; title: string; text: string }
+  | { kind: 'user'; key: string; at: string; to: AgentRole | null; title: string; text: string; attachments?: Attachment[] }
   | { kind: 'note'; key: string; at: string; tone: NoteTone; title: string; text: string | null; hint?: string }
   | { kind: 'final'; key: string; at: string; report: string };
 
@@ -147,6 +150,9 @@ export interface ApprovalInfo {
 }
 
 const AGENT_LABEL: Record<AgentRole, string> = { planner: 'Planner', executor: 'Executor' };
+
+/** The files a message carried, when it carried any (SPEC.md §10). */
+const attached = (list: Attachment[] | undefined): { attachments?: Attachment[] } => (list && list.length > 0 ? { attachments: list } : {});
 
 function baseCard(e: Extract<TaskEvent, { type: 'turn_started' }>): TurnCardBase {
   return {
@@ -239,6 +245,7 @@ export function buildTimeline(events: readonly TaskEvent[], busy = true): Timeli
           pinned: e.pinnedAccount,
           setup: null,
           snapshot: null,
+          ...(e.attachments?.length ? { attachments: e.attachments } : {}),
         };
         items.push(start);
         break;
@@ -373,10 +380,10 @@ export function buildTimeline(events: readonly TaskEvent[], busy = true): Timeli
       case 'intervention':
         switch (e.kind) {
           case 'message':
-            items.push({ kind: 'user', key: `u${e.seq}`, at: e.ts, to: e.to ?? null, title: `You → ${AGENT_LABEL[e.to ?? 'planner']}`, text: e.text ?? '' });
+            items.push({ kind: 'user', key: `u${e.seq}`, at: e.ts, to: e.to ?? null, title: `You → ${AGENT_LABEL[e.to ?? 'planner']}`, text: e.text ?? '', ...attached(e.attachments) });
             break;
           case 'answer':
-            items.push({ kind: 'user', key: `u${e.seq}`, at: e.ts, to: 'planner', title: 'You → Planner · answer', text: e.text ?? '' });
+            items.push({ kind: 'user', key: `u${e.seq}`, at: e.ts, to: 'planner', title: 'You → Planner · answer', text: e.text ?? '', ...attached(e.attachments) });
             break;
           case 'approve_instruction':
             // Shown on the cycle card the instruction becomes.

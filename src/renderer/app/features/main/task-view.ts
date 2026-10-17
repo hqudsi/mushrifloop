@@ -55,7 +55,7 @@ const APPROVAL_MODES: readonly { id: ApprovalMode; label: string }[] = [
       @if (editingTitle()) {
         <app-title-editor class="title" [value]="t.title ?? firstLine(t.description)" (saved)="saveTitle($event)" (cancelled)="editingTitle.set(false)" />
       } @else {
-        <span class="title" [title]="t.description + '\n\nDouble-click to rename.'" (dblclick)="editingTitle.set(true)">{{ title() }}</span>
+        <span class="title" dir="auto" [title]="t.description + '\n\nDouble-click to rename.'" (dblclick)="editingTitle.set(true)">{{ title() }}</span>
       }
       <app-status-pill [status]="t.status" [waiting]="t.waiting?.kind ?? null" />
       <span class="cycle mono">cycle {{ t.cycles }} / {{ t.config.maxCycles }}</span>

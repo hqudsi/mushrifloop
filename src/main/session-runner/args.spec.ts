@@ -85,6 +85,23 @@ describe('buildTurnArgs — both agents (SPEC.md §3.1)', () => {
   });
 });
 
+describe('buildTurnArgs — attachments folder (SPEC.md §10, NOTES.md §66)', () => {
+  const dir = 'C:\data\tasks\t1\attachments';
+  it('passes --add-dir to either agent, once per folder', () => {
+    for (const args of [buildTurnArgs(planner({ tools: ['Read'], addDirs: [dir] })), buildTurnArgs(executor({ addDirs: [dir] }))]) {
+      expect(flag(args, '--add-dir')).toBe(dir);
+      expect(args.filter((a) => a === '--add-dir')).toHaveLength(1);
+    }
+  });
+  it('adds nothing when the task has no attachments', () => {
+    expect(buildTurnArgs(planner())).not.toContain('--add-dir');
+    expect(buildTurnArgs(executor({ addDirs: [] }))).not.toContain('--add-dir');
+  });
+  it('lets an isolated planner have Read for them', () => {
+    expect(flag(buildTurnArgs(planner({ tools: ['Read'], addDirs: [dir] })), '--tools')).toBe('Read');
+  });
+});
+
 describe('buildTurnArgs — planner', () => {
   it('disables every tool with an empty --tools value', () => {
     const args = buildTurnArgs(planner());

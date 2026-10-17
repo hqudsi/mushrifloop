@@ -11,6 +11,7 @@ import * as path from 'node:path';
 import type {
   AccountStatus,
   ActionResult,
+  AttachmentInput,
   BlockingTask,
   ChangedFile,
   ChangedFiles,
@@ -27,7 +28,8 @@ import type {
 } from '../shared/ipc';
 import { EFFORT_LEVELS, coerceEffort, getModel, type EffortLevel } from '../shared/models';
 import { FRESH_EXECUTOR_MAX_TURNS, type Settings } from '../shared/settings';
-import type { AgentConfig, AgentRole, ConfigUpdate, ExecutorOutput, LiveTurnEvent, TaskConfig, TaskEvent, TaskRecord } from '../shared/task-model';
+import type { AgentConfig, AgentRole, Attachment, ConfigUpdate, ExecutorOutput, LiveTurnEvent, TaskConfig, TaskEvent, TaskRecord } from '../shared/task-model';
+import { checkAttachments, parseAttachmentInputs, saveAttachments } from './attachments';
 import { accountLabel, readSeenAccounts, recordAccount } from './seen-accounts';
 import { activityFromEvents, applyActivityEvent, emptyActivity, type TurnActivity } from '../shared/turn-activity';
 import { buildEnv, modelChangeVersionBlock, parseVersion, resolveClaudeBinary, runClaude } from './claude-cli';
@@ -239,14 +241,21 @@ export function parseAction(raw: unknown): TaskAction | null {
     case 'stop':
     case 'resume':
       return { kind: raw['kind'] };
-    case 'answer':
     case 'decline_waiver': {
       const t = text(raw['text']);
       return t === null ? null : { kind: raw['kind'], text: t };
     }
+    case 'answer':
     case 'send': {
       const t = text(raw['text']);
-      return t === null ? null : { kind: 'send', text: t };
+      if (t === null) return null;
+      let attachments: AttachmentInput[];
+      try {
+        attachments = parseAttachmentInputs(raw['attachments']);
+      } catch {
+        return null;
+      }
+      return attachments.length > 0 ? { kind: raw['kind'], text: t, attachments } : { kind: raw['kind'], text: t };
     }
     case 'waive_skill': {
       const skill = text(raw['skill']);
@@ -854,10 +863,17 @@ export class TaskService {
     if (description === null || projectDir === null) return { ok: false, error: 'A description and a project folder are required.' };
     const ready = this.readyDeps();
     if (!ready.ok) return ready.result;
+    let checked: ReturnType<typeof checkAttachments>;
+    try {
+      checked = checkAttachments(parseAttachmentInputs(request['attachments']));
+    } catch (err) {
+      return { ok: false, error: errorMessage(err), nextStep: 'Remove that file, or attach it again.' };
+    }
     let runner: TaskRunner;
     try {
       const config = taskConfigFromSettings(this.options.getSettings(), sanitizeOverrides(request['overrides']));
-      runner = await TaskRunner.create({ description, projectDir, config }, ready.deps);
+      const attach = checked.length > 0 ? (dir: string) => saveAttachments(dir, checked, 0, new Date()) : undefined;
+      runner = await TaskRunner.create({ description, projectDir, config, ...(attach ? { attach } : {}) }, ready.deps);
     } catch (err) {
       if (err instanceof TaskCreationError) return { ok: false, error: err.message, nextStep: err.nextStep };
       log.error('task.create_failed', { error: errorMessage(err) });
@@ -965,10 +981,23 @@ export class TaskService {
       case 'resume':
         return this.launch(taskId, () => runner.resume());
       case 'answer':
-        return this.launch(taskId, () => runner.answer(action.text));
-      case 'send':
-        // While a turn runs, the message is delivered when the turn ends.
-        return this.launch(taskId, () => runner.sendMessage(action.text));
+      case 'send': {
+        // Files are copied first and recorded by the runner; a refused message takes its copies away again.
+        let attached: Attachment[];
+        try {
+          const checked = checkAttachments(action.attachments ?? []);
+          attached = saveAttachments(this.store.attachmentsDir(taskId), checked, (runner.snapshot.attachments ?? []).length, new Date());
+        } catch (err) {
+          return { ok: false, error: errorMessage(err), nextStep: 'Remove that file, or attach it again.' };
+        }
+        // While a turn runs, a message is delivered when the turn ends.
+        const result = await this.launch(taskId, () =>
+          action.kind === 'answer' ? runner.answer(action.text, attached) : runner.sendMessage(action.text, attached),
+        );
+        const kept = new Set((runner.snapshot.attachments ?? []).map((a) => a.file));
+        for (const a of attached) if (!kept.has(a.file)) fs.rmSync(path.join(this.store.attachmentsDir(taskId), a.file), { force: true });
+        return result;
+      }
       case 'waive_skill':
         return this.launch(taskId, () => runner.waiveSkill(action.skill, action.note));
       case 'decline_waiver':
@@ -989,6 +1018,14 @@ export class TaskService {
    * not be loaded. Nothing outside the folder is touched: not the project, not its git branch, not Claude
    * Code's session files. If the Recycle Bin refuses, nothing changes and the raw error is returned.
    */
+  /** An attached file of a task, by its stored name: only one the task recorded (SPEC.md §10). */
+  attachmentPath(taskId: string, file: string): { path: string; kind: Attachment['kind'] } | null {
+    const found = this.runners.get(taskId)?.snapshot.attachments?.find((a) => a.file === file);
+    if (!found) return null;
+    const full = path.join(this.store.attachmentsDir(taskId), found.file);
+    return fs.existsSync(full) ? { path: full, kind: found.kind } : null;
+  }
+
   async delete(taskId: string): Promise<ActionResult> {
     if (!/^[\w-]+$/.test(taskId)) return { ok: false, error: `Unknown task ${taskId}.` };
     const folder = this.store.taskDir(taskId);

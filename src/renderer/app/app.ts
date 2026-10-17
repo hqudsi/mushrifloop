@@ -196,7 +196,7 @@ type View = 'main' | 'settings';
         } @else if (tasks.selected(); as task) {
           <span class="path" [title]="task.projectDir">{{ shortPath(task.projectDir) }}</span>
           <span>·</span>
-          <span class="name">{{ task.title }}</span>
+          <span class="name" dir="auto">{{ task.title }}</span>
         }
       </div>
     </header>

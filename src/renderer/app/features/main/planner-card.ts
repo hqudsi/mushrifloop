@@ -77,7 +77,7 @@ const PURPOSE: Record<string, string> = {
               <div class="unsent">Not sent to the Executor.</div>
             }
             @case ('done') {
-              <div class="body muted">{{ out.reasoning_summary }}</div>
+              <div class="body muted bidi">{{ out.reasoning_summary }}</div>
             }
           }
           @if (waiting()) {
@@ -89,7 +89,7 @@ const PURPOSE: Record<string, string> = {
               <span class="typing right"><i></i><i></i><i></i></span>
             </div>
           } @else if (out.status !== 'done') {
-            <div class="why">{{ out.reasoning_summary }}</div>
+            <div class="why bidi">{{ out.reasoning_summary }}</div>
           }
         }
       }
