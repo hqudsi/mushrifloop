@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { APP_SLUG } from './app-config';
 import { E, HANDOFF, Harness, P, failOutcome, okOutcome, waitFor } from '../main/orchestrator/__tests__/harness';
-import { ROLLOVER_HINT, buildTimeline, describeConfigChange, runningTurn, type TimelineItem } from './timeline';
+import { ROLLOVER_HINT, TIMELINE_STEP, buildTimeline, describeConfigChange, initiallyHidden, runningTurn, type TimelineItem } from './timeline';
 import { activityFromEvents, applyActivityEvent, emptyActivity, relativePath, summarizeTool } from './turn-activity';
 import type { LiveTurnEvent } from './task-model';
 
@@ -492,5 +492,22 @@ describe('buildTimeline — auto-resume skipped (§6, §17)', () => {
       title: 'Auto-resume skipped',
       text: 'Task "Refactor auth" was running, and tasks run one at a time. Resume this task when you are ready.',
     });
+  });
+});
+
+describe('a long timeline is drawn in steps (SPEC.md §10)', () => {
+  it('a short one is shown whole, a long one shows its last step', () => {
+    expect(TIMELINE_STEP).toBe(40);
+    expect(initiallyHidden(0)).toBe(0);
+    expect(initiallyHidden(40)).toBe(0);
+    // A few more than a step: still whole.
+    expect(initiallyHidden(50)).toBe(0);
+    expect(initiallyHidden(51)).toBe(11);
+    expect(initiallyHidden(1038)).toBe(998);
+  });
+
+  it('the cycle limit turned off or on is told in words', () => {
+    expect(describeConfigChange([{ field: 'noCycleLimit', from: false, to: true }]).title).toContain('cycle limit off');
+    expect(describeConfigChange([{ field: 'noCycleLimit', from: true, to: false }, { field: 'maxCycles', from: 2, to: 5 }]).title).toMatch(/cycle limit on.*max cycles 2 → 5|max cycles 2 → 5.*cycle limit on/);
   });
 });

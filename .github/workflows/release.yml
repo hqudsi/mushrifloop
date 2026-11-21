@@ -128,7 +128,8 @@ jobs:
             echo "_Release notes go here._"
             echo
             echo "SHA-256:"
-            while read -r sum name; do echo "- \`$name\`: \`$sum\`"; done < out/SHA256SUMS.txt
+            # The sums were written on Windows: drop the CR, or it ends up inside each file name.
+            tr -d '\r' < out/SHA256SUMS.txt | while read -r sum name; do echo "- \`$name\`: \`$sum\`"; done
             echo
             echo "Built by GitHub Actions from this tag. To check where a file came from:"
             echo "\`gh attestation verify <file> -R $REPO\`"

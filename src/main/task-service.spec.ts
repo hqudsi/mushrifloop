@@ -589,3 +589,15 @@ describe('TaskService commands (Phase 5)', () => {
     expect(usage.ledgerError).toContain(kept[0]!);
   });
 });
+
+describe('parseAction (Video tasks, SPEC.md §21)', () => {
+  it('accepts the consent, the re-check and the two gates, with notes where notes are sent', () => {
+    for (const kind of ['consent_install', 'recheck_image', 'approve_storyboard', 'approve_video']) {
+      expect(parseAction({ kind, extra: 1 })).toEqual({ kind });
+    }
+    expect(parseAction({ kind: 'reject_storyboard', notes: 'Later, please.' })).toEqual({ kind: 'reject_storyboard', notes: 'Later, please.' });
+    expect(parseAction({ kind: 'reject_video', notes: 'Too fast.' })).toEqual({ kind: 'reject_video', notes: 'Too fast.' });
+    expect(parseAction({ kind: 'reject_storyboard' })).toBeNull();
+    expect(parseAction({ kind: 'reject_video', notes: 7 })).toBeNull();
+  });
+});

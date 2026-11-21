@@ -265,6 +265,16 @@ async function handleWaiting(runner: TaskRunner, task: TaskRecord, rl: readline.
       else return false;
       return true;
     }
+    case 'install_consent': {
+      // try-loop only ever creates coding tasks; a Video task is consented to in the app.
+      console.log(`This Video task wants to download its tools into ${w.folder}. Open it in the app to agree.`);
+      return false;
+    }
+    case 'storyboard_approval':
+    case 'video_approval': {
+      console.log('This Video task is waiting at a gate. Open it in the app to look and decide.');
+      return false;
+    }
     case 'skill_waiver': {
       console.log('A required skill cannot run in this environment:');
       for (const b of w.skills) console.log(`  ${b.skill}: ${b.reason}`);

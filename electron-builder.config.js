@@ -49,6 +49,8 @@ module.exports = {
   extraResources: [
     { from: 'schemas', to: 'schemas' },
     { from: 'agents', to: 'agents' },
+    // Video tasks (SPEC.md §21): the kit template and the two prompt sections. Never a kit someone ran in place.
+    { from: 'video', to: 'video', filter: ['**/*', '!**/node_modules/**', '!**/out/**', '!**/dist/**'] },
     // The NSIS include is a build input, not something the app ships.
     { from: 'assets', to: 'assets', filter: ['**/*', '!*.nsh'] },
   ],

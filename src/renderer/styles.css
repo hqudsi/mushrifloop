@@ -665,3 +665,17 @@ body.resizing-panel * {
   cursor: col-resize !important;
   user-select: none !important;
 }
+
+/* "No limit" beside Max cycles (SPEC.md §5 net 1): New task, Task settings and Settings. */
+.no-limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.stepper.off {
+  opacity: 0.5;
+}

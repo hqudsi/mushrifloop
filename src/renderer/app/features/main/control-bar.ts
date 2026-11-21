@@ -12,9 +12,9 @@ import type { TaskAction } from '../../../../shared/ipc';
 import { coldSessionNote } from '../../../../shared/session-age';
 import type { TaskRecord } from '../../../../shared/task-model';
 import { TasksStore } from '../../core/tasks-store';
-import { AttachmentDraft, AttachmentTray } from '../../shared/attachments';
+import { AttachIcon, AttachmentDraft, AttachmentTray } from '../../shared/attachments';
 
-type Mode = 'none' | 'reopen' | 'answer' | 'waiver' | 'paused' | 'approval' | 'running' | 'queued' | 'draft';
+type Mode = 'none' | 'reopen' | 'answer' | 'waiver' | 'paused' | 'approval' | 'consent' | 'storyboard' | 'video' | 'running' | 'queued' | 'draft';
 
 interface ModeInfo {
   label: string;
@@ -40,6 +40,29 @@ const MODES: Record<Mode, ModeInfo> = {
     sub: '— task resumes after you send',
     placeholder: 'Answer the Planner…',
     enabled: true,
+    urgent: true,
+  },
+  // A Video task waiting to download its tools (SPEC.md §21.3): the decision is made on the card above.
+  consent: {
+    label: 'Waiting for your decision',
+    sub: '— agree to the downloads above, or cancel the task',
+    placeholder: 'Decide above first…',
+    enabled: false,
+    urgent: true,
+  },
+  // The two gates of a Video task (SPEC.md §21.5): the decision and the notes are on the card above.
+  storyboard: {
+    label: 'Waiting for you',
+    sub: '— approve the storyboard above, or send your notes there',
+    placeholder: 'Messages are closed until the storyboard is decided',
+    enabled: false,
+    urgent: true,
+  },
+  video: {
+    label: 'Waiting for you',
+    sub: '— watch the video above, then approve it or send your notes there',
+    placeholder: 'Messages are closed until the video is decided',
+    enabled: false,
     urgent: true,
   },
   waiver: {
@@ -89,7 +112,7 @@ const MODES: Record<Mode, ModeInfo> = {
 @Component({
   selector: 'app-control-bar',
   standalone: true,
-  imports: [AttachmentTray],
+  imports: [AttachIcon, AttachmentTray],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="content-column bar">
@@ -177,7 +200,9 @@ const MODES: Record<Mode, ModeInfo> = {
                 aria-label="Attach files"
                 [disabled]="busyAction()"
                 (click)="files.pick()"
-              >📎</button>
+              >
+                <app-attach-icon [size]="16" />
+              </button>
             }
             <button type="button" class="send" [disabled]="!canSend()" (click)="send()">Send</button>
           }
@@ -376,12 +401,13 @@ const MODES: Record<Mode, ModeInfo> = {
         flex: none;
         height: 24px;
         margin: 4px 0 4px 4px;
-        padding: 0 6px;
+        padding: 0 5px;
         border: 0;
         border-radius: 4px;
         background: transparent;
         color: var(--text-3);
-        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
         cursor: pointer;
       }
       .clip:hover:not(:disabled) {
@@ -445,6 +471,12 @@ export class ControlBar {
           case 'instruction_approval':
           case 'plan_approval':
             return 'approval';
+          case 'install_consent':
+            return 'consent';
+          case 'storyboard_approval':
+            return 'storyboard';
+          case 'video_approval':
+            return 'video';
           default:
             return 'paused';
         }

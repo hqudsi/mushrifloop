@@ -50,6 +50,10 @@ const CHANNELS = {
   claudeCodeUpdateOutput: 'claude-code:update-output',
   appUpdateCheck: 'app-update:check',
   usageGet: 'usage:get',
+  videoInstallPlan: 'video:install-plan',
+  videoReview: 'video:review',
+  videoImage: 'video:image',
+  videoOpen: 'video:open',
   tasksNotice: 'tasks:notice',
 } as const satisfies typeof IPC;
 
@@ -83,6 +87,10 @@ const api: AppApi = {
   getChangedFiles: (taskId: string) => ipcRenderer.invoke(CHANNELS.tasksChangedFiles, taskId),
   openTaskFile: (taskId: string, relativePath: string) => ipcRenderer.invoke(CHANNELS.tasksOpenFile, taskId, relativePath),
   inspectProject: (dir: string) => ipcRenderer.invoke(CHANNELS.projectInspect, dir),
+  videoInstallPlan: (dir: string) => ipcRenderer.invoke(CHANNELS.videoInstallPlan, dir),
+  getVideoReview: (taskId: string) => ipcRenderer.invoke(CHANNELS.videoReview, taskId),
+  getVideoImage: (taskId: string, name: string, full: boolean) => ipcRenderer.invoke(CHANNELS.videoImage, taskId, name, full === true),
+  openVideoOutput: (taskId: string, what: 'folder' | 'video' | 'gif') => ipcRenderer.invoke(CHANNELS.videoOpen, taskId, what),
   checkEditor: (command: string) => ipcRenderer.invoke(CHANNELS.editorCheck, command),
   checkClaudeCode: () => ipcRenderer.invoke(CHANNELS.claudeCodeCheck),
   updateClaudeCode: () => ipcRenderer.invoke(CHANNELS.claudeCodeUpdate),

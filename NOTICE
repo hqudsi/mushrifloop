@@ -8,3 +8,14 @@ them for a modified version in a way that suggests it is the original (Apache Li
 
 MushrifLoop is an independent project. It is not affiliated with, endorsed by, or sponsored by Anthropic.
 "Claude" and "Claude Code" are trademarks of Anthropic.
+
+Third-party files shipped with this product
+-------------------------------------------
+
+The video kit (video/kit/public/fonts/) includes two fonts, each under the SIL Open Font License,
+Version 1.1. The full licence texts are beside the font files.
+
+- Inter. Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter).
+  Licence: video/kit/public/fonts/LICENSE-Inter.txt
+- Noto Sans Arabic. Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic).
+  Licence: video/kit/public/fonts/LICENSE-NotoSansArabic.txt

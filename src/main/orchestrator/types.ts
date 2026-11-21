@@ -5,6 +5,7 @@
 
 import type { AgentRole, AuthReading, RateLimitInfo, TaskEvent, TaskRecord, TaskStatus } from '../../shared/task-model';
 import type { PermissionMode } from '../../shared/settings';
+import type { StoryboardReading, VideoFile, VideoSettings } from '../../shared/video';
 import type { TurnEvent, TurnOutcome, TurnSpec } from '../session-runner/types';
 
 export * from '../../shared/task-model';
@@ -58,8 +59,77 @@ export interface UsageLedgerPort {
   tokensOn(day: string): number;
 }
 
+/** What is in `<project>/video/` right now (SPEC.md §21.3). */
+export interface KitInspection {
+  /**
+   * `absent` or `empty`: the template may be copied. `kit`: the marker file is there, so the folder is used
+   * as it is and nothing in it is overwritten. `foreign`: files without a marker; the app does not touch it.
+   */
+  state: 'absent' | 'empty' | 'kit' | 'foreign';
+  version: string | null;
+  /** `node_modules` holds the kit's packages. */
+  packagesInstalled: boolean;
+  /** ffmpeg-static has been installed into the kit. */
+  ffmpegInstalled: boolean;
+  /** Playwright's Chromium has been downloaded into the kit. */
+  chromiumDownloaded: boolean;
+}
+
+/** A command the app runs in the kit folder itself, after consent (SPEC.md §21.3 step 4). */
+export type KitCommand =
+  | { kind: 'install' }
+  | { kind: 'tools'; downloadBrowser: boolean; ffmpeg: boolean }
+  | { kind: 'doctor'; code: string };
+
+export interface KitRunResult {
+  /** Null when the process could not start or was killed. */
+  exitCode: number | null;
+  timedOut: boolean;
+  aborted: boolean;
+  durationMs: number;
+  /** The end of what it printed, for the error message. */
+  tail: string;
+  /** Where the whole output was saved (with the task's raw files). */
+  logPath: string;
+}
+
+/** Everything a Video task needs outside the state machine (SPEC.md §21). Injected, so tests use a fake. */
+export interface VideoPort {
+  /** Versions of Node.js and npm, or null when one is missing. */
+  prerequisites(): Promise<{ node: string | null; npm: string | null }>;
+  /** "Microsoft Edge" or "Google Chrome" when one is installed; null when neither. */
+  installedBrowser(): string | null;
+  /** Is there an ffmpeg on PATH that has libx264? */
+  ffmpegOnPath(): Promise<boolean>;
+  inspectKit(projectDir: string): KitInspection;
+  /** Copy the template into `<project>/video/`. Only called for `absent` or `empty`. */
+  scaffold(projectDir: string): { kitVersion: string };
+  run(
+    command: KitCommand,
+    options: { projectDir: string; logDir: string; signal: AbortSignal; onOutput: (text: string) => void },
+  ): Promise<KitRunResult>;
+  /** The kit's out/doctor.json, or null when it is missing or unreadable. */
+  readDoctor(projectDir: string): unknown;
+  /** The installed Claude Code version, for the image-check cache key; null when it cannot be read. */
+  cliVersion(): Promise<string | null>;
+  /** The image-check cache (SPEC.md §21.3 step 5): only passes are kept. */
+  imageCheckPassed(key: string): boolean;
+  recordImageCheck(key: string, at: string): void;
+  forgetImageCheck(key: string): void;
+  /** A code to draw into the image; random in the app. */
+  newCode(): string;
+  /** The storyboard as it is on disk now, checked against the schema and this task's settings (SPEC.md §21.5). */
+  storyboard(projectDir: string, settings: VideoSettings): StoryboardReading;
+  /** The rendered MP4 and GIF in `video/out/`, when they are there and not empty. */
+  outputs(projectDir: string): { mp4: VideoFile | null; gif: VideoFile | null };
+  /** The `## Video task` section for an agent's system prompt (video/prompts/). */
+  prompt(agent: AgentRole): string;
+}
+
 export type TaskNotice =
   | { type: 'event'; taskId: string; event: TaskEvent }
+  /** Output of a setup command of a Video task, as it arrives (SPEC.md §21.3): for the visible log. */
+  | { type: 'setup_output'; taskId: string; step: 'install' | 'tools' | 'doctor'; text: string }
   | { type: 'turn_event'; taskId: string; agent: AgentRole; turnId: string; event: TurnEvent }
   | { type: 'task'; task: TaskRecord };
 
@@ -80,6 +150,8 @@ export interface OrchestratorDeps {
   store: TaskStorePort;
   usage: UsageLedgerPort | null;
   rolePrompt(agent: AgentRole): string;
+  /** Video tasks (SPEC.md §21). Without it a Video task stops with a message; coding tasks never use it. */
+  video?: VideoPort;
   now(): Date;
   newSessionId(): string;
   newTurnId(agent: AgentRole): string;

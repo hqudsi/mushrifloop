@@ -269,6 +269,29 @@ export function registerIpcHandlers(tasks: TaskService): void {
     }
   });
   ipcMain.handle(IPC.projectInspect, (_event, dir: unknown) => tasks.inspectProject(dir));
+  ipcMain.handle(IPC.videoInstallPlan, (_event, dir: unknown) => tasks.videoInstallPlan(dir));
+  // The review panel of a Video task (SPEC.md §21.7). Everything is read from the task's own video/ folder;
+  // an image is served only if a listing made in the main process shows it.
+  ipcMain.handle(IPC.videoReview, (_event, taskId: unknown) => (typeof taskId === 'string' ? tasks.videoReview(taskId) : null));
+  ipcMain.handle(IPC.videoImage, (_event, taskId: unknown, name: unknown, full: unknown): string | null => {
+    const file = typeof taskId === 'string' ? tasks.videoImagePath(taskId, name) : null;
+    if (!file) return null;
+    try {
+      if (full === true) return `data:image/png;base64,${fs.readFileSync(file).toString('base64')}`;
+      const image = nativeImage.createFromPath(file);
+      if (image.isEmpty()) return null;
+      return (image.getSize().width > 480 ? image.resize({ width: 480 }) : image).toDataURL();
+    } catch (err) {
+      log.warn('video.image_failed', { taskId, error: errorMessage(err) });
+      return null;
+    }
+  });
+  ipcMain.handle(IPC.videoOpen, async (_event, taskId: unknown, what: unknown) => {
+    const target = typeof taskId === 'string' ? tasks.videoOpenTarget(taskId, what) : null;
+    if (!target) return { ok: false, error: 'There is nothing to open yet.' };
+    const error = await shell.openPath(target);
+    return error ? { ok: false, error } : { ok: true };
+  });
   ipcMain.handle(IPC.editorCheck, (_event, command: unknown) => checkEditorCommand(typeof command === 'string' ? command : ''));
 
   // Claude Code version card (SPEC.md §11). Only ever on request; nothing here runs on a timer.

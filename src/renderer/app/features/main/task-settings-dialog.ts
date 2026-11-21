@@ -125,10 +125,17 @@ const AGENT_LABEL: Record<AgentRole, string> = { planner: 'Planner', executor: '
                 type="number"
                 [min]="minCycles()"
                 max="500"
+                [disabled]="noCycleLimit()"
                 [value]="maxCycles()"
                 (change)="maxCycles.set(clamp($any($event.target).value, minCycles(), 500, maxCycles()))"
               />
-              @if (maxCycles() === task().cycles) {
+              <label class="no-limit">
+                <input type="checkbox" [checked]="noCycleLimit()" (change)="noCycleLimit.set($any($event.target).checked)" />
+                No limit
+              </label>
+              @if (noCycleLimit()) {
+                <span class="hint">The task then stops only when the Planner says done, at a usage limit, or when you stop it.</span>
+              } @else if (maxCycles() === task().cycles) {
                 <span class="hint warn">
                   This task has run {{ task().cycles }} cycles, so it will stop at this limit before its next one.
                 </span>
@@ -504,6 +511,7 @@ export class TaskSettingsDialog implements OnInit {
   protected readonly planner = signal<AgentConfig>({ model: 'opus', effort: null });
   protected readonly executor = signal<AgentConfig>({ model: 'sonnet', effort: null });
   protected readonly maxCycles = signal(25);
+  protected readonly noCycleLimit = signal(false);
   protected readonly rollover = signal(60);
   protected readonly skills = signal<string[]>([]);
   protected readonly skillDraft = signal('');
@@ -523,7 +531,8 @@ export class TaskSettingsDialog implements OnInit {
     const c = this.task().config;
     this.planner.set({ ...c.planner });
     this.executor.set({ ...c.executor });
-    this.maxCycles.set(c.maxCycles);
+    this.maxCycles.set(Math.max(c.maxCycles, this.task().cycles));
+    this.noCycleLimit.set(c.noCycleLimit === true);
     this.rollover.set(c.rolloverPercent);
     this.skills.set([...c.requiredSkills]);
     this.autoCommit.set(c.autoBranchAndCommit);
@@ -576,7 +585,8 @@ export class TaskSettingsDialog implements OnInit {
   private readonly update = computed<ConfigUpdate>(() => {
     const c = this.task().config;
     const out: ConfigUpdate = {};
-    if (this.maxCycles() !== c.maxCycles) out.maxCycles = this.maxCycles();
+    if (!this.noCycleLimit() && this.maxCycles() !== c.maxCycles) out.maxCycles = this.maxCycles();
+    if (this.noCycleLimit() !== (c.noCycleLimit === true)) out.noCycleLimit = this.noCycleLimit();
     if (this.rollover() !== c.rolloverPercent) out.rolloverPercent = this.rollover();
     const skills = this.skills();
     if (skills.length !== c.requiredSkills.length || skills.some((s, i) => s !== c.requiredSkills[i])) out.requiredSkills = [...skills];

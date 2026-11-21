@@ -15,11 +15,17 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type { ValidationIssue } from '../shared/task-model';
+import { IMAGE_CHECK_SCHEMA, videoPlannerSchema } from './video/derived-schemas';
 
 export type { ValidationIssue };
 
-export type SchemaKind = 'planner-output' | 'executor-output' | 'handoff-summary';
+/**
+ * The last two are not files: `planner-output-video` is the base Planner schema plus one field and
+ * `image-check` is a two-field answer, both built in code for Video tasks (SPEC.md §21.3, §21.5).
+ */
+export type SchemaKind = 'planner-output' | 'executor-output' | 'handoff-summary' | 'planner-output-video' | 'image-check';
 
+/** The schemas read from `schemas/*.schema.json`. */
 export const SCHEMA_KINDS: readonly SchemaKind[] = ['planner-output', 'executor-output', 'handoff-summary'];
 
 export type ValidationResult<T = unknown> =
@@ -66,7 +72,7 @@ function conditionalIssues(kind: SchemaKind, value: Record<string, unknown>): Va
     }
   };
   const status = value['status'];
-  if (kind === 'planner-output') {
+  if (kind === 'planner-output' || kind === 'planner-output-video') {
     if (status === 'continue') requireNonEmpty('next_instruction', 'when status is "continue"');
     if (status === 'done') requireNonEmpty('final_report', 'when status is "done"');
     if (status === 'blocked' || status === 'needs_user' || status === 'plan_ready') {
@@ -108,6 +114,23 @@ export class SchemaRegistry {
           `Schema ${file} does not compile in strict mode: ${err instanceof Error ? err.message : String(err)}`,
           file,
         );
+      }
+      loaded.set(kind, { kind, file, schema, inline: JSON.stringify(schema), validate });
+    }
+    // Derived in code, never files: the base Planner schema itself is left exactly as it was read.
+    const base = loaded.get('planner-output');
+    if (!base) throw new SchemaLoadError('The Planner schema was not loaded', 'planner-output');
+    const derived: Array<[SchemaKind, Record<string, unknown>]> = [
+      ['planner-output-video', videoPlannerSchema(base.schema)],
+      ['image-check', IMAGE_CHECK_SCHEMA],
+    ];
+    for (const [kind, schema] of derived) {
+      const file = `(derived) ${kind}`;
+      let validate: ValidateFunction;
+      try {
+        validate = ajv.compile(schema);
+      } catch (err) {
+        throw new SchemaLoadError(`Schema ${kind} does not compile in strict mode: ${err instanceof Error ? err.message : String(err)}`, file);
       }
       loaded.set(kind, { kind, file, schema, inline: JSON.stringify(schema), validate });
     }

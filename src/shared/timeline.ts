@@ -9,6 +9,7 @@
  * own item, in order.
  */
 
+import type { VideoSetupStep } from './video';
 import type { ApprovalMode } from './settings';
 import { turnShareReader } from './turn-cost';
 import type {
@@ -215,6 +216,17 @@ const STATUS_NOTES: Partial<Record<string, { tone: NoteTone; title: string }>> =
  * @param busy whether a turn of this task is running right now; when not, a turn that started but never
  *   reported is shown as interrupted rather than running.
  */
+/** Titles of a Video task's setup steps (SPEC.md §21.3). */
+const VIDEO_STEP_TITLE: Record<VideoSetupStep, string> = {
+  prerequisites: 'Video setup: Node.js and npm',
+  consent: 'Video setup: downloads',
+  scaffold: 'Video setup: the kit',
+  install: 'Video setup: packages installed',
+  tools: 'Video setup: tools installed',
+  doctor: 'Video setup: this computer can render',
+  image_check: 'Video setup: the Planner can read images',
+};
+
 export function buildTimeline(events: readonly TaskEvent[], busy = true): TimelineItem[] {
   const items: TimelineItem[] = [];
   const planners = new Map<string, PlannerCard>();
@@ -269,7 +281,25 @@ export function buildTimeline(events: readonly TaskEvent[], busy = true): Timeli
       case 'commit':
         if (e.purpose === 'snapshot' && start && e.info.state === 'committed') start.snapshot = e.info;
         else if (e.purpose === 'before_review') pendingPreReview = e.info;
+        else if (e.purpose === 'video_kit') {
+          if (e.info.state === 'committed') note(e, 'info', 'The video kit was committed on its own', `${e.info.hash.slice(0, 10)} · ${e.info.files.length} file(s). Cycle 1 then holds only the task's changes.`);
+          else if (e.info.state === 'failed') note(e, 'warn', 'The video kit could not be committed', e.info.error);
+        }
         break;
+
+      case 'storyboard_unchanged':
+        note(e, 'warn', 'A storyboard revision changed nothing', 'The instruction was marked as a change to the storyboard, and the storyboard is as it was. The next step is held for you whatever it is marked as.');
+        break;
+
+      case 'video_setup': {
+        const title = VIDEO_STEP_TITLE[e.step];
+        // The consent wait is shown as the waiting state itself; a second note would only repeat it.
+        if (e.step === 'consent') break;
+        const took = e.durationMs !== undefined && e.durationMs >= 1000 ? ` (${Math.round(e.durationMs / 1000)} s)` : '';
+        const cost = typeof e.costUsd === 'number' ? ` One check turn: $${e.costUsd.toFixed(3)}.` : '';
+        note(e, e.ok ? 'success' : 'danger', `${title}${e.ok ? '' : ' — stopped'}${took}`, `${e.detail}${cost}`);
+        break;
+      }
 
       case 'turn_started': {
         if (e.purpose === 'handoff') {
@@ -413,6 +443,24 @@ export function buildTimeline(events: readonly TaskEvent[], busy = true): Timeli
           case 'rollover_now':
             note(e, 'info', `You asked for a ${e.to ?? 'session'} rollover`, null, ROLLOVER_HINT);
             break;
+          case 'approve_storyboard':
+            note(e, 'success', 'You approved the storyboard', 'The step that was held goes ahead, and the Planner is told.');
+            break;
+          case 'reject_storyboard':
+            items.push({ kind: 'user', key: `u${e.seq}`, at: e.ts, to: 'planner', title: 'Your notes on the storyboard', text: e.text ?? '' });
+            break;
+          case 'approve_video':
+            note(e, 'success', 'You approved the video');
+            break;
+          case 'reject_video':
+            items.push({ kind: 'user', key: `u${e.seq}`, at: e.ts, to: 'planner', title: 'Your notes on the video', text: e.text ?? '' });
+            break;
+          case 'consent_install':
+            note(e, 'info', 'You agreed to the downloads', e.text ? `Into the project's video folder: ${e.text}.` : null);
+            break;
+          case 'recheck_image':
+            note(e, 'info', 'You asked to check image reading again', 'It runs the next time the task runs, whatever was checked before.');
+            break;
           default:
             break;
         }
@@ -423,6 +471,9 @@ export function buildTimeline(events: readonly TaskEvent[], busy = true): Timeli
           const w = e.waiting;
           if (w.kind === 'paused') note(e, 'wait', w.cause === 'daily_cap' ? 'Paused: daily token cap' : 'Paused', w.reason);
           else if (w.kind === 'possible_loop') note(e, 'warn', 'Possible loop — paused for you', w.reason);
+          else if (w.kind === 'install_consent') note(e, 'wait', 'Waiting for you: download the video tools?', 'Nothing is downloaded until you agree.');
+          else if (w.kind === 'storyboard_approval') note(e, 'wait', 'Waiting for you: the storyboard', 'Nothing is built until you approve it.');
+          else if (w.kind === 'video_approval') note(e, 'wait', 'Waiting for you: watch the video', 'The task finishes when you approve it.');
           else if (w.kind === 'skill_waiver') note(e, 'wait', 'A required skill cannot run here', e.reason);
           // A question, an instruction or a plan waiting for the user is shown on its Planner card and the
           // approval card; the user's decision appears as its own item (or on the cycle card).
@@ -441,7 +492,11 @@ export function buildTimeline(events: readonly TaskEvent[], busy = true): Timeli
             ? 'Done refused: required skills have not run'
             : e.reason === 'plan_not_approved'
               ? 'Refused: the plan is not approved yet'
-              : "Refused: the Planner's answer was malformed",
+              : e.reason === 'storyboard_not_approved'
+                ? 'Done refused: the storyboard is not approved yet'
+                : e.reason === 'video_missing'
+                  ? 'Done refused: the video is not rendered yet'
+                  : "Refused: the Planner's answer was malformed",
           e.detail,
         );
         break;
@@ -613,6 +668,9 @@ export function describeConfigChange(changes: readonly ConfigChangeEntry[]): { t
       case 'requiredSkills':
         parts.push(`required skills ${c.from.join(', ') || 'none'} → ${c.to.join(', ') || 'none'}`);
         break;
+      case 'noCycleLimit':
+        parts.push(c.to ? 'cycle limit off' : 'cycle limit on');
+        break;
       case 'autoBranchAndCommit':
         parts.push(`auto-commit ${c.to ? 'on' : 'off'}`);
         break;
@@ -652,4 +710,19 @@ export function describeConfigChange(changes: readonly ConfigChangeEntry[]): { t
     ...(limits ? ['A turn already running keeps the limits it started with.'] : []),
   ];
   return { title: `Task settings changed: ${parts.join('; ')}`, detail: when.join(' ') };
+}
+
+// ---------------------------------------------------------------------------
+// A long timeline is drawn in steps (SPEC.md §10, NOTES.md §77)
+// ---------------------------------------------------------------------------
+
+/** How many timeline items are drawn when a task opens, and how many each step back adds. */
+export const TIMELINE_STEP = 40;
+
+/**
+ * How many items are left out at the top when a task opens. A timeline only a little longer than one step
+ * is shown whole: a "2 earlier items" line helps nobody.
+ */
+export function initiallyHidden(length: number): number {
+  return length > TIMELINE_STEP + 10 ? length - TIMELINE_STEP : 0;
 }

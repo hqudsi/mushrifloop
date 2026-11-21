@@ -8,8 +8,9 @@ import * as fs from 'node:fs';
 
 import type { Settings } from '../../shared/settings';
 import { runClaude } from '../claude-cli';
-import { agentPromptFile, schemasFolder, tasksFolder, usageFile } from '../config';
+import { agentPromptFile, imageCheckCacheFile, schemasFolder, tasksFolder, usageFile, videoFolder } from '../config';
 import { SchemaRegistry } from '../schema-validator';
+import { createVideoPort } from '../video/kit-ops';
 import { TURN_KILL_BUDGET_MS, createRunnerContext, makeTurnId, probeInit, runTurn, type RunnerContext } from '../session-runner';
 import { readAuthWithRetry, readingFromAuthOutput } from './account';
 import { createGitOps } from './git';
@@ -34,6 +35,7 @@ export function taskConfigFromSettings(settings: Settings, overrides: Partial<Ta
     planner: { model: d.plannerModel, effort: d.plannerEffort },
     executor: { model: d.executorModel, effort: d.executorEffort },
     maxCycles: d.maxCycles,
+    ...(d.noCycleLimit ? { noCycleLimit: true } : {}),
     turnTimeoutMs: d.turnTimeoutMinutes * 60_000,
     slowTurnMs: d.slowTurnWarningMinutes * 60_000,
     maxTurnsPerSession: d.maxTurnsPerSession,
@@ -59,6 +61,8 @@ export interface RealDepsOptions {
   tasksRoot?: string;
   /** Defaults to <data folder>/usage.json. */
   usageFile?: string;
+  /** Defaults to <data folder>/video-image-check.json. */
+  imageCheckCacheFile?: string;
   /** Defaults to the CLI resolved from settings (the evaluation harness passes its fake CLI here). */
   runnerContext?: RunnerContext;
 }
@@ -95,6 +99,11 @@ export function createRealDeps(settings: Settings, options: RealDepsOptions = {}
     usage,
     // Read once per process: a session's system prompt is fixed when it starts anyway.
     rolePrompt: (agent) => (roles[agent] ??= fs.readFileSync(agentPromptFile(agent), 'utf8')),
+    video: createVideoPort({
+      videoFolder: videoFolder(),
+      cacheFile: options.imageCheckCacheFile ?? imageCheckCacheFile(),
+      cliVersion: async () => (await ctx.cliVersion()).version,
+    }),
     now: () => new Date(),
     newSessionId: () => randomUUID(),
     newTurnId: (agent) => makeTurnId(agent),

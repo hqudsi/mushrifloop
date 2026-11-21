@@ -8,6 +8,8 @@
 import * as path from 'node:path';
 
 import { posixPath, posixPaths } from '../../shared/format';
+import { compareVersions } from '../../shared/models';
+import { VIDEO_KIT_STYLE_SINCE, VIDEO_PROGRESS_FILE } from '../../shared/video';
 import type { ApprovalMode } from '../../shared/settings';
 import { describeToolUses } from './answer-check';
 import { describeSkillState } from './skills';
@@ -59,8 +61,44 @@ export function withPosixPaths<T extends ExecutorOutput | HandoffSummary>(output
 // System prompts (fixed per session)
 // ---------------------------------------------------------------------------
 
-export function plannerSystemPrompt(role: string, task: TaskRecord): string {
+/**
+ * The `## Video task` section of a Video task's system prompt (SPEC.md §21.4): the shipped text for that
+ * agent, then the facts of this video and of this computer. Null for a coding task, whose prompt is then
+ * exactly what it was before Video tasks existed.
+ */
+export function videoSection(sectionText: string | null, task: TaskRecord): string | null {
+  const video = task.video;
+  if (task.kind !== 'video' || !video || sectionText === null) return null;
+  const { durationSec, width, height, fps, gif } = video.settings;
+  const frames = Math.round(durationSec * fps);
+  const lines = [
+    sectionText.trimEnd(),
+    '',
+    'This video:',
+    `- Length: ${durationSec} s at ${fps} fps, so ${frames} frames (0 to ${frames - 1}). Size: ${width}×${height}. These are fixed: storyboard.json must say exactly this.`,
+    gif ? '- A GIF is wanted too: `out/video.gif` must exist before done.' : '- No GIF was asked for.',
+    `- The kit is in \`${video.kitDir}/\` in the project root.`,
+  ];
+  // A kit that was already in the project is used as it is (§21.3), so it can be older than this text.
+  const kitVersion = video.setup.kitVersion;
+  if (kitVersion !== null && compareVersions(kitVersion, VIDEO_KIT_STYLE_SINCE) < 0) {
+    lines.push(
+      `- This project's kit is version ${kitVersion}, from before the style toolkit: it has no \`src/style\` folder and no \`npm run small\`, and its \`npm run stills\` always writes every review frame at full size beside a larger contact sheet (\`--frame\` works only together with \`--crop\`). The rules for a drawn look hold all the same; what the toolkit would give is written in the project's own code. Open the contact sheet, and a full-size frame only when a detail needs it. Do not replace or upgrade the kit.`,
+    );
+  }
+  const doctor = video.setup.doctor;
+  if (doctor) {
+    const speed = doctor.msPerFrame !== null ? `, about ${doctor.msPerFrame} ms per frame, so a full render takes about ${Math.max(1, Math.ceil((doctor.msPerFrame * frames) / 1000))} s plus encoding` : '';
+    lines.push(
+      `- Rendering on this computer: ${doctor.browser ?? 'a browser'}${doctor.browserVersion ? ` ${doctor.browserVersion}` : ''}, ${doctor.hardware ? 'hardware-accelerated' : 'software rendering (slow)'}${speed}.`,
+    );
+  }
+  return lines.join('\n');
+}
+
+export function plannerSystemPrompt(role: string, task: TaskRecord, video: string | null = null): string {
   const parts = [role.trimEnd()];
+  if (video !== null) parts.push(video);
   const skills = task.skills.available;
   if (skills === null) {
     parts.push('## Available skills\n\nThe skill list could not be determined when this session started. The orchestrator will tell you if it learns it later.');
@@ -79,8 +117,9 @@ export function plannerSystemPrompt(role: string, task: TaskRecord): string {
   return parts.join('\n\n') + '\n';
 }
 
-export function executorSystemPrompt(role: string, task: TaskRecord): string {
+export function executorSystemPrompt(role: string, task: TaskRecord, video: string | null = null): string {
   const parts = [role.trimEnd()];
+  if (video !== null) parts.push(video);
   const standing = task.config.standingInstructions.executor.trim();
   if (standing) parts.push(`## Standing instructions\n\n${standing}`);
   // SPEC.md §3.1 (2026-10-06): without it the Executor could not find the contract an instruction pointed at.
@@ -93,8 +132,30 @@ export function executorSystemPrompt(role: string, task: TaskRecord): string {
   return parts.join('\n\n') + '\n';
 }
 
-export function systemPromptFor(agent: AgentRole, role: string, task: TaskRecord): string {
-  return agent === 'planner' ? plannerSystemPrompt(role, task) : executorSystemPrompt(role, task);
+/** `videoText`: the shipped video section for this agent; only used when the task is a Video task. */
+export function systemPromptFor(agent: AgentRole, role: string, task: TaskRecord, videoText: string | null = null): string {
+  const video = videoSection(videoText, task);
+  return agent === 'planner' ? plannerSystemPrompt(role, task, video) : executorSystemPrompt(role, task, video);
+}
+
+/** The system prompt of the image check (SPEC.md §21.3 step 5): the whole of it, in place of a role prompt. */
+export function imageCheckSystemPrompt(): string {
+  return (
+    'You are checking whether this session can read an image file. You have the Read tool. ' +
+    'Open the file you are told to open, look at it, and answer by calling the structured-output tool (StructuredOutput) once. ' +
+    'seen is true or false. code is plain text: exactly the characters shown in the image, nothing else. ' +
+    'If the image cannot be opened or you cannot see its content, set seen to false, code to an empty string, and say what happened in problem. Never guess a code.\n'
+  );
+}
+
+export function imageCheckPrompt(file: string): string {
+  return `Open the image ${file} in your working directory with the Read tool. It shows one short code in large letters. Report that code.`;
+}
+
+/** One line in the Planner's first prompt of a Video task; null for a coding task. `file` paths are relative to the project root. */
+export function videoStartNote(task: TaskRecord): string | null {
+  if (task.kind !== 'video' || !task.video) return null;
+  return 'This is a Video task: follow the "Video task" section of your instructions. The kit in `video/` is installed and has been checked on this computer. Start with the storyboard.';
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +170,9 @@ export function plannerStartPrompt(task: TaskRecord, planFirst: boolean, attachm
     ...(attachments ? ['', attachments] : []),
     '',
     `Project folder name: ${path.basename(task.projectDir)} (the executor works in its root).`,
-    `Limit: at most ${task.config.maxCycles} executor turns for this task.`,
+    task.config.noCycleLimit === true
+      ? 'Limit: the user set no limit on executor turns for this task. Finish when the work is done; do not stretch it.'
+      : `Limit: at most ${task.config.maxCycles} executor turns for this task.`,
   ];
   if (task.git.enabled && task.git.isRepo) {
     lines.push(
@@ -122,6 +185,8 @@ export function plannerStartPrompt(task: TaskRecord, planFirst: boolean, attachm
       );
     }
   }
+  const videoNote = videoStartNote(task);
+  if (videoNote) lines.push('', videoNote);
   if (planFirst) {
     lines.push(
       '',
@@ -138,7 +203,8 @@ export interface ReportFacts {
   /** The Executor's tool calls in the turn, by tool. */
   toolUses: Readonly<Record<string, number>>;
   cycle: number;
-  maxCycles: number;
+  /** Null: the task has no cycle limit (SPEC.md §5 net 1). */
+  maxCycles: number | null;
   durationMs: number;
   slow: boolean;
   slowTurnMs: number | null;
@@ -152,10 +218,11 @@ export interface ReportFacts {
 
 export function executorReportPrompt(output: ExecutorOutput, facts: ReportFacts): string {
   const lines: string[] = [];
+  const of = facts.maxCycles === null ? '' : ` of at most ${facts.maxCycles}`;
   lines.push(
     facts.userMessage !== null
-      ? `[EXECUTOR REPORT] Cycle ${facts.cycle} of at most ${facts.maxCycles}. This turn answered a message the user sent the executor directly: "${clip(facts.userMessage, 400)}"`
-      : `[EXECUTOR REPORT] Cycle ${facts.cycle} of at most ${facts.maxCycles}.`,
+      ? `[EXECUTOR REPORT] Cycle ${facts.cycle}${of}. This turn answered a message the user sent the executor directly: "${clip(facts.userMessage, 400)}"`
+      : `[EXECUTOR REPORT] Cycle ${facts.cycle}${of}.`,
   );
   lines.push(`Turn time: ${formatDuration(facts.durationMs)}.`);
   const check = facts.answerCheck;
@@ -422,6 +489,15 @@ export function rolloverSeed(summary: HandoffSummary, agent: AgentRole, task: Ta
     lines.push('', `Warning: that summary ${why}, and it is likely incomplete. Check the current state of the files you need before relying on it.`);
   }
   if (agent === 'planner') lines.push('', 'The original task description:', task.description.trim());
+  // SPEC.md §21.10: a Video task's Executor is replaced early and often, so its state is in files.
+  if (agent === 'executor' && task.kind === 'video' && task.video) {
+    const dir = task.video.kitDir;
+    lines.push(
+      '',
+      `This is a Video task, and its state is in the project's files, not in that summary. Before anything else, read \`${dir}/storyboard.json\`, \`${dir}/${VIDEO_PROGRESS_FILE}\` (your own progress notes) and the source file of the shot the next message is about. ` +
+        'Where the summary and the files disagree, the files are right. Do not rebuild what the notes say is done, and do not re-read every shot: only what the next message needs.',
+    );
+  }
   lines.push('', 'The next message follows.', '');
   return lines.join('\n');
 }
@@ -444,7 +520,7 @@ export function restartSeed(agent: AgentRole, task: TaskRecord): string {
   if (agent === 'executor' && task.loop.lastInstruction) {
     lines.push('', 'The last instruction the planner gave:', clip(task.loop.lastInstruction, 800));
   }
-  lines.push('', `Cycles used so far: ${task.cycles} of at most ${task.config.maxCycles}.`, '', 'The next message follows.', '');
+  lines.push('', task.config.noCycleLimit === true ? `Cycles used so far: ${task.cycles} (no limit is set).` : `Cycles used so far: ${task.cycles} of at most ${task.config.maxCycles}.`, '', 'The next message follows.', '');
   return lines.join('\n');
 }
 
@@ -459,4 +535,46 @@ export function composeStdin(step: { prompt: string; retryNote: string | null },
  */
 export function shortSummary(text: string, max = 60): string {
   return clip(text, max);
+}
+
+// ---------------------------------------------------------------------------
+// Video tasks: the two gates (SPEC.md §21.5)
+// ---------------------------------------------------------------------------
+
+export function storyboardApprovedNote(): string {
+  return '[FROM USER] The storyboard is approved. Build it as approved, one shot at a time. If you have to change the storyboard later, say so in your final report: the human sees that it changed.';
+}
+
+export function storyboardRejected(instruction: string, notes: string): string {
+  return (
+    `[FROM USER] The storyboard is not approved yet. Notes:\n${notes.trim()}\n\n` +
+    `Your instruction "${clip(instruction, 300)}" was not sent to the executor. Have the executor revise the storyboard ` +
+    '(set revises_storyboard to true on that instruction); the human sees it again before anything is built.'
+  );
+}
+
+export function storyboardRefusal(reading: { state: 'missing' | 'invalid' | 'valid'; problems: readonly string[] }): string {
+  const why =
+    reading.state === 'missing'
+      ? 'There is no video/storyboard.json yet.'
+      : reading.state === 'invalid'
+        ? `video/storyboard.json is not valid: ${reading.problems.slice(0, 6).join(' ')}`
+        : 'The human has not approved the storyboard yet.';
+  return `[ORCHESTRATOR] status=done refused: a Video task cannot finish before the human has approved its storyboard. ${why} Have the executor write or fix the storyboard; the orchestrator shows it to the human before the first shot is built.`;
+}
+
+export function videoMissingRefusal(missing: readonly string[]): string {
+  return (
+    `[ORCHESTRATOR] status=done refused: ${missing.join(' and ')} ${missing.length === 1 ? 'does' : 'do'} not exist yet. ` +
+    'Have the executor run `npm run render` in video/ until it prints DONE' +
+    (missing.some((m) => m.endsWith('.gif')) ? ', then `npm run gif`' : '') +
+    '; the orchestrator then shows the result to the human.'
+  );
+}
+
+export function videoRejected(notes: string): string {
+  return (
+    `[FROM USER] The human watched the video and it is not approved yet. Notes:\n${notes.trim()}\n\n` +
+    'Work them in, shot by shot, with stills as before; then render again and answer done. The human watches the new video before the task finishes.'
+  );
 }

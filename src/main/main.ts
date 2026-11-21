@@ -12,7 +12,9 @@ import { BrowserWindow, Notification, app, dialog, protocol, screen, shell } fro
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { APP_BRIDGE, APP_PROTOCOL, APP_SLUG, BRIDGE_ARG, DEV_SERVER_ENV, QUIT_STOP_BUDGET_ENV } from '../shared/app-config';
+import { APP_BRIDGE, APP_PROTOCOL, APP_SLUG, BRIDGE_ARG, DEV_SERVER_ENV, MEDIA_PROTOCOL, QUIT_STOP_BUDGET_ENV } from '../shared/app-config';
+import { Readable } from 'node:stream';
+import { rangeFor } from './video/review';
 import { APP_NAME, appIconFile, dataFolder, defaultDataFolder, initDataFolder, notificationIconFile, setStorageInfo } from './config';
 import { IPC, type TaskNoticeMessage, type TaskToast } from '../shared/ipc';
 import { registerIpcHandlers } from './ipc';
@@ -47,6 +49,8 @@ if (process.env['LOCALAPPDATA']) {
 
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_PROTOCOL, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // A Video task's MP4 and GIF (SPEC.md §21.7): `stream` lets a <video> element play and seek it.
+  { scheme: MEDIA_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
 ]);
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -78,6 +82,31 @@ function registerAppProtocol(): void {
       return new Response(new Uint8Array(body), { headers: { 'content-type': type } });
     } catch (err) {
       log.error('protocol.read_failed', { target, error: errorMessage(err) });
+      return new Response('Not found', { status: 404 });
+    }
+  });
+}
+
+/**
+ * `<slug>-media://task/<task id>/video.mp4` (or `video.gif`): the rendered file of a Video task, and nothing
+ * else. The handler answers Range requests itself — passing the file through `net.fetch` does not, and the
+ * player then cannot seek (NOTES.md §68.1).
+ */
+function registerMediaProtocol(tasks: TaskService): void {
+  protocol.handle(MEDIA_PROTOCOL, (request) => {
+    const url = new URL(request.url);
+    const [taskId, name, ...rest] = decodeURIComponent(url.pathname).replace(/^\/+/, '').split('/');
+    const found = url.hostname === 'task' && taskId && name && rest.length === 0 ? tasks.videoMedia(taskId, name) : null;
+    if (!found) return new Response('Not found', { status: 404 });
+    try {
+      const size = fs.statSync(found.file).size;
+      const range = rangeFor(request.headers.get('range'), size);
+      const headers = { 'content-type': found.type, 'cache-control': 'no-store', ...range.headers };
+      if (range.status === 416) return new Response(null, { status: 416, headers });
+      const body = Readable.toWeb(fs.createReadStream(found.file, { start: range.start, end: range.end })) as ReadableStream;
+      return new Response(body, { status: range.status, headers });
+    } catch (err) {
+      log.error('media.read_failed', { file: found.file, error: errorMessage(err) });
       return new Response('Not found', { status: 404 });
     }
   });
@@ -263,6 +292,7 @@ if (!singleInstance) {
     });
     tasks.init();
     registerIpcHandlers(tasks);
+    registerMediaProtocol(tasks);
 
     // Quitting while a turn runs asks first; "Quit and stop" waits until the task is saved as `stopped`
     // (SPEC.md §6).

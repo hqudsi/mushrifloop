@@ -67,12 +67,12 @@ describe('file ping-pong (§5 net 2)', () => {
 
 describe('rollover threshold (§15)', () => {
   it('is rolloverPercent × the model auto-compact point, strictly exceeded', () => {
-    expect(rolloverDue(580_200, 'opus', 60)).toEqual({ due: false, threshold: 580_200 });
+    expect(rolloverDue(580_200, 'opus', 60)).toEqual({ due: false, threshold: 580_200, capped: false });
     expect(rolloverDue(580_201, 'opus', 60).due).toBe(true);
-    expect(rolloverDue(100_201, 'claude-sonnet-4-6', 60)).toEqual({ due: true, threshold: 100_200 });
+    expect(rolloverDue(100_201, 'claude-sonnet-4-6', 60)).toEqual({ due: true, threshold: 100_200, capped: false });
     expect(rolloverDue(null, 'haiku', 60).due).toBe(false);
     // Unknown model → the 167,000 fallback.
-    expect(rolloverDue(100_201, 'mystery-model', 60)).toEqual({ due: true, threshold: 100_200 });
+    expect(rolloverDue(100_201, 'mystery-model', 60)).toEqual({ due: true, threshold: 100_200, capped: false });
   });
 });
 

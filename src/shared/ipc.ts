@@ -6,6 +6,7 @@
  * by src/preload/preload.ts.
  */
 
+import type { InstallPlan, TaskKind, VideoRequest, VideoReview } from './video';
 import type { ApprovalMode, Settings, ThemeSetting } from './settings';
 import type {
   AgentRole,
@@ -54,6 +55,10 @@ export const IPC = {
   appUpdateCheck: 'app-update:check',
   usageGet: 'usage:get',
   /** main → renderer push channel for task updates (see `onTaskNotice`). */
+  videoInstallPlan: 'video:install-plan',
+  videoReview: 'video:review',
+  videoImage: 'video:image',
+  videoOpen: 'video:open',
   tasksNotice: 'tasks:notice',
 } as const;
 
@@ -214,6 +219,8 @@ export interface TaskSummary {
   projectKey: string;
   /** Archived (SPEC.md §10, managing tasks). */
   archived: boolean;
+  /** A Video task (SPEC.md §21): the list shows a small tag. */
+  video: boolean;
   /** Pinned to the top of the list. Not to be confused with `pinned`, the account the task is pinned to. */
   pinnedToTop: boolean;
   /** The task's git branch, if it made one: named in the Delete dialog, never deleted by the app. */
@@ -223,6 +230,8 @@ export interface TaskSummary {
   waitingKind: WaitingState['kind'] | null;
   cycles: number;
   maxCycles: number;
+  /** The task runs without a cycle limit (SPEC.md §5 net 1). */
+  noCycleLimit: boolean;
   createdAt: string;
   updatedAt: string;
   statusChangedAt: string;
@@ -279,7 +288,17 @@ export type TaskAction =
   /** Archive or unarchive (SPEC.md §10). Only a task at rest may be archived. */
   | { kind: 'archive'; archived: boolean }
   /** Pin to the top of the list, or unpin. Any status. */
-  | { kind: 'pin'; pinned: boolean };
+  | { kind: 'pin'; pinned: boolean }
+  /** Video task (SPEC.md §21.3): agree to the downloads the task is waiting to make. */
+  | { kind: 'consent_install' }
+  /** Video task: check again that the Planner can read an image, whatever the cache says. Not while it runs. */
+  | { kind: 'recheck_image' }
+  /** Video task, the storyboard gate (SPEC.md §21.5): approve what is shown, or send notes to the Planner. */
+  | { kind: 'approve_storyboard' }
+  | { kind: 'reject_storyboard'; notes: string }
+  /** Video task, the final gate: approve the video that was watched, or send notes for another round. */
+  | { kind: 'approve_video' }
+  | { kind: 'reject_video'; notes: string };
 
 /** The task that made a command wait: tasks run one at a time (SPEC.md §6, §13). */
 export interface BlockingTask {
@@ -299,12 +318,12 @@ export interface ActionResult {
 }
 
 /**
- * A file to attach (SPEC.md §10): a path on disk (the 📎 picker, drag and drop), or the bytes of an image
+ * A file to attach (SPEC.md §10): a path on disk (the attach button's picker, drag and drop), or the bytes of an image
  * pasted from the clipboard. The main process copies it into the task's attachments folder.
  */
 export type AttachmentInput = { path: string } | { name: string; data: Uint8Array };
 
-/** A file chosen with the 📎 picker. */
+/** A file chosen with the attach button's picker. */
 export interface PickedFile {
   path: string;
   name: string;
@@ -318,6 +337,12 @@ export interface CreateTaskRequest {
   attachments?: AttachmentInput[];
   /** Per-task overrides of the Task defaults (SPEC.md §11). */
   overrides?: Partial<TaskConfig>;
+  /** `video` for a Video task (SPEC.md §21.2); absent for a coding task. */
+  kind?: TaskKind;
+  /** A Video task's length, format and GIF choice. */
+  video?: VideoRequest;
+  /** The downloads shown in the dialog and agreed to there (SPEC.md §21.3); absent: the task asks when it starts. */
+  videoConsent?: InstallPlan;
   /** Start the loop right away. */
   start?: boolean;
 }
@@ -424,9 +449,28 @@ export interface TaskToast {
   at: string;
 }
 
+/**
+ * What a Video task in this folder would have to download, on the path that would actually be taken
+ * (SPEC.md §21.3): for the New task dialog and the consent dialog.
+ */
+export interface VideoInstallPlan {
+  /** The kit's folder, forward slashes. */
+  folder: string;
+  /** `foreign`: the folder has files that are not a video kit, so a Video task cannot start there. */
+  kit: 'absent' | 'empty' | 'kit' | 'foreign';
+  node: string | null;
+  npm: string | null;
+  /** "Microsoft Edge" or "Google Chrome" when one is installed. */
+  browser: string | null;
+  plan: InstallPlan;
+  error: string | null;
+}
+
 /** Pushed from the main process whenever something about a task changes. */
 export type TaskNoticeMessage =
   | { type: 'event'; taskId: string; event: TaskEvent }
+  /** Output of a Video task's setup command as it arrives (SPEC.md §21.3): the visible log. */
+  | { type: 'setup_output'; taskId: string; step: 'install' | 'tools' | 'doctor'; text: string }
   | { type: 'turn_event'; taskId: string; turnId: string; agent: AgentRole; seq: number; event: LiveTurnEvent }
   | { type: 'task'; summary: TaskSummary; task: TaskRecord; busy: boolean }
   | { type: 'toast'; toast: TaskToast }
@@ -522,7 +566,7 @@ export interface AppApi {
   pickDirectory(title: string, defaultPath?: string): Promise<PickPathResult>;
   pickFile(title: string, defaultPath?: string): Promise<PickPathResult>;
   openPath(target: string): Promise<{ ok: boolean; error?: string }>;
-  /** The 📎 picker: files to attach (SPEC.md §10). Empty when cancelled. */
+  /** The attach button's picker: files to attach (SPEC.md §10). Empty when cancelled. */
   pickAttachments(): Promise<PickedFile[]>;
   /** The path of a file dropped on the window (Electron's `webUtils`); '' for one that has none. */
   pathForFile(file: File): string;
@@ -556,6 +600,14 @@ export interface AppApi {
   openTaskFile(taskId: string, relativePath: string): Promise<{ ok: boolean; error?: string }>;
   /** Git state of a folder, for the New task dialog. */
   inspectProject(dir: string): Promise<ProjectInspection>;
+  /** What a Video task in this folder would download. Only looks; installs nothing. */
+  videoInstallPlan(dir: string): Promise<VideoInstallPlan>;
+  /** A Video task's storyboard, review images and rendered files, read from its own video/ folder (SPEC.md §21.7). */
+  getVideoReview(taskId: string): Promise<VideoReview | null>;
+  /** One review image as a data URL: a thumbnail, or the whole PNG. Only a file the listing shows. */
+  getVideoImage(taskId: string, name: string, full: boolean): Promise<string | null>;
+  /** Open the task's output folder in Explorer, or its MP4 or GIF with the default program. */
+  openVideoOutput(taskId: string, what: 'folder' | 'video' | 'gif'): Promise<{ ok: boolean; error?: string }>;
   /**
    * Does the "Open files with" command resolve to a real program? Nothing is run — the program is
    * only looked for on disk (SPEC.md §11).

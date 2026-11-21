@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Storyboard",
+  "description": "video/storyboard.json of a Video task: what the human approves before anything is built, and the data the kit's code and scripts read.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["title", "width", "height", "fps", "durationInFrames", "shots"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "width": { "type": "integer", "minimum": 16, "maximum": 7680 },
+    "height": { "type": "integer", "minimum": 16, "maximum": 7680 },
+    "fps": { "type": "integer", "minimum": 1, "maximum": 120 },
+    "durationInFrames": { "type": "integer", "minimum": 1 },
+    "shots": {
+      "type": "array",
+      "minItems": 1,
+      "description": "A LIST of shots, in order, following each other without gaps from frame 0 to the last frame.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "name", "startFrame", "endFrame", "onScreen", "texts", "reviewFrames", "acceptance"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "startFrame": { "type": "integer", "minimum": 0 },
+          "endFrame": { "type": "integer", "minimum": 0 },
+          "onScreen": { "type": "string", "minLength": 1 },
+          "texts": {
+            "type": "array",
+            "description": "A LIST of the texts on screen in this shot; empty when there is none.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["id", "text", "lang", "startFrame", "endFrame"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "text": { "type": "string", "minLength": 1 },
+                "lang": { "type": "string", "minLength": 1 },
+                "startFrame": { "type": "integer", "minimum": 0 },
+                "endFrame": { "type": "integer", "minimum": 0 }
+              }
+            }
+          },
+          "reviewFrames": {
+            "type": "array",
+            "minItems": 1,
+            "description": "A LIST of frame numbers inside the shot, rendered as stills for review.",
+            "items": { "type": "integer", "minimum": 0 }
+          },
+          "acceptance": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 5,
+            "description": "A LIST of 3 to 5 checks that must be true of this shot.",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}

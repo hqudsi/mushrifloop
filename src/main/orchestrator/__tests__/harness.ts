@@ -21,6 +21,9 @@ import type {
   GitOps,
   HandoffSummary,
   InitProbeResult,
+  KitCommand,
+  KitInspection,
+  KitRunResult,
   OrchestratorDeps,
   PlannerOutput,
   TaskConfig,
@@ -28,7 +31,9 @@ import type {
   TaskNotification,
   TaskRecord,
   UsageLedgerPort,
+  VideoPort,
 } from '../types';
+import type { StoryboardReading, VideoFile, VideoSettings } from '../../../shared/video';
 
 export const PINNED_ACCOUNT: AccountRecord = {
   email: 'owner@example.com',
@@ -201,6 +206,99 @@ export class FakeGit implements GitOps {
   }
 }
 
+/** A scripted stand-in for everything a Video task does outside the state machine (SPEC.md §21.3). */
+export class FakeVideo implements VideoPort {
+  node: string | null = '26.12.0';
+  npm: string | null = '11.20.0';
+  browser: string | null = 'Microsoft Edge';
+  ffmpeg = true;
+  kit: KitInspection = { state: 'absent', version: null, packagesInstalled: false, ffmpegInstalled: false, chromiumDownloaded: false };
+  /** What out/doctor.json says after doctor ran. */
+  doctor: unknown = {
+    ok: true,
+    problems: [],
+    warnings: [],
+    browser: 'Microsoft Edge',
+    browserVersion: '157.0.4341.42',
+    chosen: 'msedge',
+    renderer: 'ANGLE (Intel)',
+    hardware: true,
+    msPerFrame: 45,
+    ffmpeg: { source: 'PATH', version: 'ffmpeg 9.0.2', libx264: true },
+    node: '26.12.0',
+  };
+  cli: string | null = '2.1.322';
+  code = 'ABCD-2345';
+  readonly passes = new Map<string, string>();
+  readonly runs: KitCommand[] = [];
+  scaffolds = 0;
+  /** Override one command's outcome; the default is exit code 0. */
+  onRun: ((command: KitCommand, signal: AbortSignal) => Partial<KitRunResult> | Promise<Partial<KitRunResult>>) | null = null;
+  readonly output: string[] = [];
+
+  async prerequisites() {
+    return { node: this.node, npm: this.npm };
+  }
+  installedBrowser() {
+    return this.browser;
+  }
+  async ffmpegOnPath() {
+    return this.ffmpeg;
+  }
+  inspectKit(): KitInspection {
+    return { ...this.kit };
+  }
+  scaffold() {
+    this.scaffolds += 1;
+    this.kit = { ...this.kit, state: 'kit', version: '1.0.0' };
+    return { kitVersion: '1.0.0' };
+  }
+  async run(command: KitCommand, options: { projectDir: string; logDir: string; signal: AbortSignal; onOutput: (text: string) => void }): Promise<KitRunResult> {
+    this.runs.push(command);
+    options.onOutput(`fake ${command.kind}\n`);
+    const custom = (await this.onRun?.(command, options.signal)) ?? {};
+    const result: KitRunResult = { exitCode: 0, timedOut: false, aborted: false, durationMs: 1200, tail: `fake ${command.kind} done`, logPath: path.join(options.logDir, `video-${command.kind}.log`), ...custom };
+    if (result.exitCode === 0) {
+      if (command.kind === 'install') this.kit = { ...this.kit, packagesInstalled: true };
+      if (command.kind === 'tools') this.kit = { ...this.kit, ffmpegInstalled: this.kit.ffmpegInstalled || command.ffmpeg, chromiumDownloaded: this.kit.chromiumDownloaded || command.downloadBrowser };
+    }
+    return result;
+  }
+  readDoctor() {
+    return this.doctor;
+  }
+  async cliVersion() {
+    return this.cli;
+  }
+  imageCheckPassed(key: string) {
+    return this.passes.has(key);
+  }
+  recordImageCheck(key: string, at: string) {
+    this.passes.set(key, at);
+  }
+  forgetImageCheck(key: string) {
+    this.passes.delete(key);
+  }
+  newCode() {
+    return this.code;
+  }
+  /** The storyboard on disk as the app would read it; tests set it as the Executor "writes" it. */
+  board: StoryboardReading = { state: 'missing', problems: [], hash: null };
+  mp4: VideoFile | null = null;
+  gif: VideoFile | null = null;
+  storyboard(): StoryboardReading {
+    return { ...this.board };
+  }
+  outputs() {
+    return { mp4: this.mp4, gif: this.gif };
+  }
+  prompt(agent: AgentRole) {
+    return `## Video task\n\nVIDEO SECTION FOR ${agent.toUpperCase()}`;
+  }
+}
+
+export const VIDEO_SETTINGS: VideoSettings = { durationSec: 6, width: 1920, height: 1080, fps: 30, gif: false };
+
 type Handler = (spec: TurnSpec) => TurnOutcome | Promise<TurnOutcome>;
 
 export const TEST_CONFIG: TaskConfig = {
@@ -227,6 +325,8 @@ export class Harness {
   readonly projectDir = path.join(this.dir, 'project');
   readonly store = new TaskStore(path.join(this.dir, 'tasks'));
   readonly git = new FakeGit();
+  /** Present in every harness, as in the app; a coding task never touches it. */
+  readonly video = new FakeVideo();
   auth: AuthReading = PINNED;
   authCalls = 0;
   probe: () => Promise<InitProbeResult> = async () => ({ skills: ['deep-research'], slashCommands: ['security-review', 'clear'] });
@@ -319,6 +419,7 @@ export class Harness {
       store: this.store,
       usage: this.usage,
       rolePrompt: (agent) => `ROLE PROMPT FOR ${agent.toUpperCase()}`,
+      video: this.video,
       now: () => this.clock,
       newSessionId: () => `session-${++this.sessionCounter}`,
       newTurnId: (agent) => `turn-${++this.turnCounter}-${agent}`,
@@ -336,6 +437,19 @@ export class Harness {
 
   async create(config: Partial<TaskConfig> = {}, description = 'Add a README with the project name.'): Promise<TaskRunner> {
     return TaskRunner.create({ description, projectDir: this.projectDir, config: { ...TEST_CONFIG, ...config } }, this.deps());
+  }
+
+  /** A Video task (SPEC.md §21): read-only Planner, as the app requires. */
+  async createVideo(config: Partial<TaskConfig> = {}, video: Partial<VideoSettings> = {}, description = 'A 6-second title card.'): Promise<TaskRunner> {
+    return TaskRunner.create(
+      { description, projectDir: this.projectDir, config: { ...TEST_CONFIG, plannerContextMode: 'read_only', ...config }, kind: 'video', video: { ...VIDEO_SETTINGS, ...video } },
+      this.deps(),
+    );
+  }
+
+  /** Script the image check's answer (SPEC.md §21.3 step 5): the code the session says it read. */
+  imageCheck(code: string | null = null): this {
+    return this.on('planner', (spec) => okOutcome(spec, code === null ? { seen: false, code: '', problem: 'The file is not an image I can open.' } : { seen: true, code }));
   }
 
   task(runner: TaskRunner): TaskRecord {

@@ -67,6 +67,10 @@ describe('cycleToast and toastAllowed', () => {
   it('maps each category to its Settings toggle', () => {
     const cycle = cycleToast(task({}), { cycle: 2, executorStatus: 'ok', changedFiles: ['a.ts'] } as never, AT);
     expect(cycle).toMatchObject({ category: 'cycle', title: 'Cycle 2 of 8 finished' });
+    // No limit (SPEC.md §5 net 1): there is no "of".
+    const open = task({});
+    open.config = { ...open.config, noCycleLimit: true };
+    expect(cycleToast(open, { cycle: 343, executorStatus: 'ok', changedFiles: [] } as never, AT).title).toBe('Cycle 343 finished');
     expect(cycle.body).toContain('1 file changed');
     expect(toastAllowed(cycle, settings)).toBe(false);
     expect(toastAllowed({ ...cycle, category: 'waiting' }, settings)).toBe(true);

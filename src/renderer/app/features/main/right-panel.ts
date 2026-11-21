@@ -6,15 +6,17 @@
 
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 
-import { formatDateTime, formatDuration, formatTokens } from '../../../../shared/format';
+import { formatDateTime, formatDuration, formatTokens, formatUsd } from '../../../../shared/format';
 import type { ChangedFile, TaskDetail, UsageWindow } from '../../../../shared/ipc';
 import { modelDisplay, rolloverThresholdFor } from '../../../../shared/models';
 import type { AgentRole, TaskRecord } from '../../../../shared/task-model';
-import { taskTimes } from '../../../../shared/task-stats';
+import { taskCost, taskTimes } from '../../../../shared/task-stats';
+import { rolloverCapFor } from '../../../../shared/video';
 import { isPastReset, usageLevel, type UsageLevel } from '../../../../shared/usage';
 import { ROLLOVER_HINT } from '../../../../shared/timeline';
 import { PanelStore } from '../../core/panel-store';
 import { TasksStore } from '../../core/tasks-store';
+import { VideoPanel } from './video-panel';
 
 const AGENTS: readonly AgentRole[] = ['planner', 'executor'];
 const LABEL: Record<AgentRole, string> = { planner: 'Planner', executor: 'Executor' };
@@ -26,13 +28,19 @@ function modelLabel(id: string, cliVersion: string | null): string {
 @Component({
   selector: 'app-right-panel',
   standalone: true,
+  imports: [VideoPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let t = detail().task;
     @let f = panel.files();
 
+    <!-- VIDEO (a Video task only, SPEC.md §21.7) -->
+    @if (t.kind === 'video') {
+      <app-video-panel />
+    }
+
     <!-- CHANGED FILES -->
-    <div class="sec-head first">
+    <div class="sec-head" [class.first]="t.kind !== 'video'">
       <span class="caps">CHANGED FILES</span>
       <span class="mono count">
         @if (f) {
@@ -81,8 +89,13 @@ function modelLabel(id: string, cliVersion: string | null): string {
     <div class="grid">
       <span class="k">Cycles</span>
       <span class="bar-row">
-        <span class="mono">{{ t.cycles }} / {{ t.config.maxCycles }}</span>
-        <span class="bar"><span [style.width.%]="cyclePct()"></span></span>
+        @if (t.config.noCycleLimit) {
+          <span class="mono">{{ t.cycles }}</span>
+          <span class="muted small">no limit</span>
+        } @else {
+          <span class="mono">{{ t.cycles }} / {{ t.config.maxCycles }}</span>
+          <span class="bar"><span [style.width.%]="cyclePct()"></span></span>
+        }
       </span>
       <span class="k">Elapsed</span>
       <span class="mono">
@@ -90,6 +103,16 @@ function modelLabel(id: string, cliVersion: string | null): string {
         @if (waiting(); as w) {
           <span class="muted">· waiting on you {{ w }}</span>
         }
+      </span>
+      <!-- What the turns cost at API prices, as Claude Code reports it (SPEC.md §10). -->
+      @let money = cost();
+      <span class="k">{{ ended() ? 'Cost' : 'Cost so far' }}</span>
+      <span class="cost" [attr.title]="money.title">
+        @if (money.floor) {
+          <span class="muted small">at least</span>
+        }
+        <span class="mono">{{ money.total }}</span>
+        <span class="muted small">at API prices</span>
       </span>
       @for (agent of agents; track agent) {
         <span class="k">{{ label[agent] }}</span>
@@ -104,14 +127,17 @@ function modelLabel(id: string, cliVersion: string | null): string {
     </div>
 
     <!-- CONTEXT (SPEC.md §15) -->
-    <div class="sec-head"><span class="caps">CONTEXT</span><span class="note">rollover at {{ t.config.rolloverPercent }}% of auto-compact</span></div>
+    <div class="sec-head">
+      <span class="caps">CONTEXT</span>
+      <span class="note">rollover at {{ t.config.rolloverPercent }}% of auto-compact</span>
+    </div>
     <div class="ctx">
       @for (agent of agents; track agent) {
         @let c = context()[agent];
         <div class="ctx-row">
           <div class="ctx-top">
             <span class="agent"><span class="dot" [class]="'dot ' + agent"></span>{{ label[agent] }}</span>
-            <span class="mono small">{{ c.used }} / {{ c.threshold }}</span>
+            <span class="mono small" [attr.title]="agent === 'executor' ? videoCapNote() : null">{{ c.used }} / {{ c.threshold }}</span>
           </div>
           <span class="bar"><span [class.hot]="c.pct >= 80" [style.width.%]="c.pct"></span></span>
           <div class="ctx-bottom">
@@ -411,6 +437,12 @@ function modelLabel(id: string, cliVersion: string | null): string {
       .bar > span.quota.over {
         background: var(--danger);
       }
+      .cost {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
       .muted {
         color: var(--text-muted);
       }
@@ -575,6 +607,30 @@ export class RightPanel {
   protected readonly elapsed = computed(() => formatDuration(this.times().elapsedMs));
   protected readonly waiting = computed(() => (this.times().waitingMs >= 1000 ? formatDuration(this.times().waitingMs) : null));
 
+  /** The task's cost so far (SPEC.md §10): the sum of its turns' own shares, with the split in the tooltip. */
+  protected readonly cost = computed(() => {
+    const c = taskCost(this.detail().events);
+    const parts = [`Planner ${formatUsd(c.plannerUsd)}`, `Executor ${formatUsd(c.executorUsd)}`];
+    if (c.otherUsd > 0) parts.push(`image check ${formatUsd(c.otherUsd)}`);
+    const unknown = c.unknownTurns > 0 ? `\n${c.unknownTurns} ${c.unknownTurns === 1 ? 'turn' : 'turns'} ended without reporting a cost, so the real figure is higher.` : '';
+    return {
+      total: c.turns === 0 ? '—' : formatUsd(c.totalUsd),
+      floor: c.unknownTurns > 0 && c.turns > 0,
+      title:
+        `${parts.join(' · ')}\n` +
+        'What these turns would cost at API prices, as Claude Code reports it. On a subscription this is not money charged: it shows how heavy the task is.' +
+        unknown,
+    };
+  });
+
+  /** Why the Executor's bar ends earlier in a Video task (SPEC.md §21.10); null for any other task. */
+  protected readonly videoCapNote = computed(() => {
+    const t = this.detail().task;
+    const cap = rolloverCapFor(t.kind, 'executor');
+    if (cap === null || cap >= rolloverThresholdFor(t.config.executor.model, t.config.rolloverPercent)) return null;
+    return `In a Video task the Executor starts a fresh session at ${formatTokens(cap)} tokens: re-reading a long session is the largest cost of a video, and the state is in the project's files.`;
+  });
+
   protected readonly approvalLabel = computed(() => {
     const t = this.detail().task;
     switch (t.config.approvalMode) {
@@ -595,8 +651,11 @@ export class RightPanel {
     >;
     for (const agent of AGENTS) {
       const s = t.sessions[agent];
-      // The same threshold the orchestrator uses (SPEC.md §15): the task's model and rollover percent.
-      const threshold = rolloverThresholdFor(t.config[agent].model, t.config.rolloverPercent);
+      // The same threshold the orchestrator uses (SPEC.md §15): the task's model and rollover percent, and
+      // for the Executor of a Video task the lower limit of §21.10.
+      const byModel = rolloverThresholdFor(t.config[agent].model, t.config.rolloverPercent);
+      const cap = rolloverCapFor(t.kind, agent);
+      const threshold = cap !== null ? Math.min(cap, byModel) : byModel;
       const used = s.lastContextTokens;
       const retired = s.retired.length;
       const canRoll = s.established && !['done', 'failed'].includes(t.status) && s.rolloverRequested === null;

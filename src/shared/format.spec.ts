@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { codeSegments, formatClock, formatDuration, formatElapsed, formatMoment, formatTokens, posixPath, posixPaths } from './format';
+import { codeSegments, formatClock, formatDuration, formatElapsed, formatMoment, formatTokens, formatUsd, posixPath, posixPaths } from './format';
+
+describe('formatUsd (SPEC.md §10: the cost line)', () => {
+  it('two decimals, thousands separated, and a floor that never reads as nothing', () => {
+    expect(formatUsd(56.4)).toBe('$56.40');
+    expect(formatUsd(0.874)).toBe('$0.87');
+    expect(formatUsd(1234.5)).toBe('$1,234.50');
+    expect(formatUsd(0.004)).toBe('under $0.01');
+    expect(formatUsd(0)).toBe('$0.00');
+    expect(formatUsd(Number.NaN)).toBe('$0.00');
+  });
+});
 
 describe('posixPath (SPEC.md §4, decided 2026-09-18)', () => {
   it('turns Windows separators into forward slashes and leaves everything else alone', () => {

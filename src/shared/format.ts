@@ -94,6 +94,13 @@ export function formatCost(usd: number | null | undefined): string {
   return usd === null || usd === undefined ? '' : `$${usd.toFixed(3)}`;
 }
 
+/** A sum of money for the task's cost line (SPEC.md §10): `$31.20`, `$0.87`, and `under $0.01` for less. */
+export function formatUsd(usd: number): string {
+  if (!Number.isFinite(usd) || usd <= 0) return '$0.00';
+  if (usd < 0.01) return 'under $0.01';
+  return `$${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export interface TextSegment {
   code: boolean;
   bold: boolean;

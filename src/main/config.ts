@@ -114,6 +114,16 @@ export function notificationIconFile(): string {
   return path.join(assetsFolder(), 'icon-256.png');
 }
 
+/** Everything a Video task ships with (SPEC.md §21): the kit template and the two prompt sections. */
+export function videoFolder(): string {
+  return path.join(resourceRoot(), 'video');
+}
+
+/** Passes of the Video task image check, by CLI version, launch flags and model (SPEC.md §21.3). */
+export function imageCheckCacheFile(): string {
+  return path.join(dataFolder(), 'video-image-check.json');
+}
+
 export function agentPromptFile(agent: 'planner' | 'executor'): string {
   return path.join(resourceRoot(), 'agents', `${agent}.md`);
 }

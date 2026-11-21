@@ -38,6 +38,13 @@ describe('app update check (SPEC.md §11)', () => {
     }
   });
 
+  it('tells a beta that its release is out, and not that an older release is newer', async () => {
+    const out = await checkAppUpdate({ current: '1.9.0-beta.1', fetchLatestRelease: async () => release({ tag_name: 'v1.9.0' }), now });
+    expect(out.newer).toBe(true);
+    const older = await checkAppUpdate({ current: '1.9.0-beta.1', fetchLatestRelease: async () => release({ tag_name: 'v1.8.0' }), now });
+    expect(older.newer).toBe(false);
+  });
+
   it('compares numerically, not as text', async () => {
     const info = await checkAppUpdate({ current: '1.9.0', fetchLatestRelease: async () => release({ tag_name: 'v1.10.0' }), now });
     expect(info.newer).toBe(true);

@@ -5,6 +5,7 @@ import {
   AUTO_COMPACT_MEASURED_ON,
   FALLBACK_AUTO_COMPACT_THRESHOLD,
   FABLE_5_1_MIN_CLI_VERSION,
+  FABLE_5_2_MIN_CLI_VERSION,
   MIN_CLI_VERSION,
   MODELS,
   PICKER_MODELS,
@@ -33,6 +34,7 @@ import {
 /** SPEC.md §8 — the table the UI must not deviate from. */
 describe('model → effort validity table (SPEC.md §8)', () => {
   const expected: Record<string, string[]> = {
+    'claude-fable-5-2': ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-fable-5-1': ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-opus-5-5': ['low', 'medium', 'high', 'xhigh', 'max'],
     'claude-sonnet-5-5': ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -79,8 +81,8 @@ describe('model → effort validity table (SPEC.md §8)', () => {
 
   it('only marks Fable models as Fable, and requires a minimum CLI version for them', () => {
     const fable = MODELS.filter((m) => m.isFable);
-    expect(fable.map((m) => m.id)).toEqual(['claude-fable-5-1']);
-    expect(fable[0]?.minCliVersion).toBe(FABLE_5_1_MIN_CLI_VERSION);
+    expect(fable.map((m) => m.id)).toEqual(['claude-fable-5-2', 'claude-fable-5-1']);
+    expect(fable.map((m) => m.minCliVersion)).toEqual([FABLE_5_2_MIN_CLI_VERSION, FABLE_5_1_MIN_CLI_VERSION]);
   });
 });
 
@@ -182,6 +184,25 @@ describe('version comparison', () => {
     expect(compareVersions('2.1.251', '2.1.251')).toBe(0);
   });
 
+  it('counts a pre-release as older than its release', () => {
+    expect(compareVersions('1.9.0', '1.9.0-beta.1')).toBeGreaterThan(0);
+    expect(compareVersions('1.9.0-beta.1', '1.9.0')).toBeLessThan(0);
+    expect(compareVersions('1.9.0-beta.1', '1.8.0')).toBeGreaterThan(0);
+    expect(compareVersions('1.8.0', '1.9.0-beta.1')).toBeLessThan(0);
+    expect(compareVersions('1.9.1', '1.9.0-beta.1')).toBeGreaterThan(0);
+    expect(compareVersions('1.9.0-beta.1', '1.9.0-beta.1')).toBe(0);
+  });
+
+  it('orders pre-releases of one version', () => {
+    expect(compareVersions('1.9.0-beta.2', '1.9.0-beta.1')).toBeGreaterThan(0);
+    expect(compareVersions('1.9.0-beta.10', '1.9.0-beta.9')).toBeGreaterThan(0);
+    expect(compareVersions('1.9.0-beta.1', '1.9.0-alpha.3')).toBeGreaterThan(0);
+    expect(compareVersions('1.9.0-rc.1', '1.9.0-beta.4')).toBeGreaterThan(0);
+    expect(compareVersions('1.9.0-beta', '1.9.0-beta.1')).toBeLessThan(0);
+    expect(compareVersions('1.9.0-1', '1.9.0-beta')).toBeLessThan(0);
+    expect(compareVersions('1.9.0+build.5', '1.9.0')).toBe(0);
+  });
+
   it("flags versions below the app's own minimum", () => {
     expect(isVersionBelow('2.1.220', MIN_CLI_VERSION)).toBe(true);
     expect(isVersionBelow('2.1.251', MIN_CLI_VERSION)).toBe(false);
@@ -206,22 +227,29 @@ describe('modelVersionBlock', () => {
 
   it('lists every model an installed version is too old for (SPEC.md §3.3)', () => {
     expect(modelsTooNewFor('2.1.251')).toEqual([
+      { label: 'Fable 5.2', minimum: '2.1.321' },
       { label: 'Fable 5.1', minimum: '2.1.257' },
       { label: 'Opus 5.5', minimum: '2.1.280' },
       { label: 'Sonnet 5.5', minimum: '2.1.284' },
       { label: 'Haiku 5.5', minimum: '2.1.293' },
     ]);
     expect(modelsTooNewFor('2.1.273')).toEqual([
+      { label: 'Fable 5.2', minimum: '2.1.321' },
       { label: 'Opus 5.5', minimum: '2.1.280' },
       { label: 'Sonnet 5.5', minimum: '2.1.284' },
       { label: 'Haiku 5.5', minimum: '2.1.293' },
     ]);
     expect(modelsTooNewFor('2.1.280')).toEqual([
+      { label: 'Fable 5.2', minimum: '2.1.321' },
       { label: 'Sonnet 5.5', minimum: '2.1.284' },
       { label: 'Haiku 5.5', minimum: '2.1.293' },
     ]);
-    expect(modelsTooNewFor('2.1.291')).toEqual([{ label: 'Haiku 5.5', minimum: '2.1.293' }]);
-    expect(modelsTooNewFor('2.1.293')).toEqual([]);
+    expect(modelsTooNewFor('2.1.291')).toEqual([
+      { label: 'Fable 5.2', minimum: '2.1.321' },
+      { label: 'Haiku 5.5', minimum: '2.1.293' },
+    ]);
+    expect(modelsTooNewFor('2.1.293')).toEqual([{ label: 'Fable 5.2', minimum: '2.1.321' }]);
+    expect(modelsTooNewFor('2.1.321')).toEqual([]);
   });
 
   it('treats an unreadable version as too old for a model with a minimum', () => {
@@ -403,5 +431,29 @@ describe('model names: a choice as chosen, a turn as it ran (SPEC.md §8)', () =
 
   it('shows a full id as itself, with no alias note', () => {
     expect(modelDisplay('claude-opus-5', '2.1.280')).toEqual({ name: 'Opus 5', alias: null, text: 'Opus 5', note: null });
+  });
+});
+
+describe('Fable 5.2 (SPEC.md §8, added 2026-11-21)', () => {
+  it('is offered first, as a Fable model, with every effort level and a 1M window', () => {
+    expect(MODELS[0]?.id).toBe('claude-fable-5-2');
+    const m = getModel('claude-fable-5-2');
+    expect(m).toMatchObject({ label: 'Fable 5.2', isFable: true, contextWindow: 1_000_000, autoCompactThreshold: 967_000, servedAs: 'claude-fable-5-2' });
+    expect(effortsFor('claude-fable-5-2')).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    expect(rolloverThresholdFor('claude-fable-5-2', 60)).toBe(580_200);
+  });
+
+  it('is blocked below Claude Code 2.1.321 and runs from it', () => {
+    expect(FABLE_5_2_MIN_CLI_VERSION).toBe('2.1.321');
+    expect(modelVersionBlock('claude-fable-5-2', '2.1.320')).toContain('Fable 5.2 requires Claude Code 2.1.321 or newer; this machine has 2.1.320');
+    expect(modelVersionBlock('claude-fable-5-2', '2.1.321')).toBeNull();
+    expect(modelVersionBlock('claude-fable-5-2', '2.1.330')).toBeNull();
+  });
+
+  it('a turn served by another model is not taken for it, and Fable 5.1 is still offered', () => {
+    expect(servedModelMatches('claude-fable-5-2', 'claude-fable-5-2')).toBe(true);
+    expect(servedModelMatches('claude-fable-5-2', 'claude-fable-5-1')).toBe(false);
+    expect(servedModelMatches('claude-fable-5-2', 'claude-opus-5-5')).toBe(false);
+    expect(getModel('claude-fable-5-1')?.label).toBe('Fable 5.1');
   });
 });

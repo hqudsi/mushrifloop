@@ -126,7 +126,7 @@ const cardStyles = `
         </dd>
         <dt>Rules</dt>
         <dd>
-          {{ item().config.approvalMode }} · max {{ item().config.maxCycles }} cycles · required skills:
+          {{ item().config.approvalMode }} · {{ item().config.noCycleLimit ? 'no cycle limit' : 'max ' + item().config.maxCycles + ' cycles' }} · required skills:
           {{ item().config.requiredSkills.join(', ') || 'none' }}
         </dd>
         <dt>Account</dt>

@@ -2,7 +2,7 @@
  * Attachments in the renderer (SPEC.md §10): the files waiting to be sent with a message or a new task, the
  * chips that show them, and the attached files shown with a message in the timeline.
  *
- * A file reaches the draft three ways: the 📎 picker (paths from the main process), drag and drop (the
+ * A file reaches the draft three ways: the attach button's picker (paths from the main process), drag and drop (the
  * dropped file's path, through the preload bridge), or a paste (an image with no path: its bytes). The main
  * process copies them; the renderer never touches the disk.
  */
@@ -13,6 +13,47 @@ import { attachmentKind, attachmentProblem, formatBytes } from '../../../shared/
 import type { AttachmentInput, PickedFile } from '../../../shared/ipc';
 import type { Attachment, AttachmentKind } from '../../../shared/task-model';
 import { api } from '../core/api';
+
+/**
+ * The attach button's icon: a paperclip with a small plus at its lower right (owner's choice, 2026-10-18;
+ * SPEC.md §10). Drawn in the text's colour, so it follows the button's hover and disabled states and both themes.
+ */
+@Component({
+  selector: 'app-attach-icon',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { 'aria-hidden': 'true', '[style.width.px]': 'size()', '[style.height.px]': 'size()' },
+  template: `
+    <svg viewBox="0 0 24 24" [attr.width]="size()" [attr.height]="size()">
+      <path
+        transform="translate(-1 3) scale(.82)"
+        d="M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5"
+      />
+      <path d="M19 15v6M16 18h6" />
+    </svg>
+  `,
+  styles: [
+    `
+      :host {
+        display: inline-block;
+        flex: none;
+        line-height: 0;
+      }
+      svg {
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+    `,
+  ],
+})
+export class AttachIcon {
+  /** Drawn size in px. */
+  readonly size = input(16);
+}
 
 export interface PendingAttachment {
   key: number;
@@ -54,7 +95,7 @@ export class AttachmentDraft {
     this.add(added);
   }
 
-  /** The 📎 picker. */
+  /** The attach button's picker. */
   async pick(): Promise<void> {
     const picked: PickedFile[] = await api().pickAttachments();
     this.add(picked.map((p) => ({ key: nextKey++, name: p.name, size: p.size, kind: attachmentKind(p.name), input: { path: p.path } })));

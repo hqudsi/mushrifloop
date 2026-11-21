@@ -23,6 +23,11 @@ describe('default settings (SPEC.md §11)', () => {
 
   it('uses the documented loop and approval defaults', () => {
     expect(d.taskDefaults.maxCycles).toBe(100);
+    // The limit is on unless the user turns it off (SPEC.md §5 net 1); a settings file from before has no such field.
+    expect(d.taskDefaults.noCycleLimit).toBe(false);
+    expect(mergeSettings({ taskDefaults: { maxCycles: 7 } }).taskDefaults.noCycleLimit).toBe(false);
+    expect(mergeSettings({ taskDefaults: { noCycleLimit: true } }).taskDefaults.noCycleLimit).toBe(true);
+    expect(mergeSettings({ taskDefaults: { noCycleLimit: 'yes' } }).taskDefaults.noCycleLimit).toBe(false);
     expect(d.taskDefaults.turnTimeoutMinutes).toBe(60);
     expect(d.taskDefaults.slowTurnWarningMinutes).toBe(30);
     expect(d.taskDefaults.maxTurnsPerSession).toBe(80);

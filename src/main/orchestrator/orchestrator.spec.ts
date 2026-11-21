@@ -201,6 +201,63 @@ describe('safety net 1: max cycles', () => {
     expect(h.notifications.at(-1)?.status).toBe('failed');
     h.assertScriptDone();
   });
+
+  describe('the limit is optional (owner, 2026-11-21)', () => {
+    it('with "No limit" the task runs past the number, and both agents are told there is none', async () => {
+      h.planner(P.cont('step 1')).executor(E.ok(['a.txt'])).planner(P.cont('step 2')).executor(E.ok(['b.txt'])).planner(P.cont('step 3')).executor(E.ok(['c.txt'])).planner(P.done());
+      const runner = await h.create({ maxCycles: 2, noCycleLimit: true });
+      await runner.start();
+      const task = h.task(runner);
+      expect(task.status).toBe('done');
+      expect(task.cycles).toBe(3);
+      expect(task.config.maxCycles).toBe(2);
+      const first = h.specs[0]?.prompt ?? '';
+      expect(first).toContain('Limit: the user set no limit on executor turns for this task.');
+      expect(first).not.toContain('at most 2');
+      const report = h.specs[2]?.prompt ?? '';
+      expect(report).toContain('[EXECUTOR REPORT] Cycle 1.');
+      expect(report).not.toContain('of at most');
+      h.assertScriptDone();
+    });
+
+    it('a task without the field keeps its limit: tasks made before this are unchanged', async () => {
+      h.planner(P.cont('step 1')).executor(E.ok()).planner(P.cont('step 2'));
+      const runner = await h.create({ maxCycles: 1 });
+      await runner.start();
+      const task = h.task(runner);
+      expect('noCycleLimit' in task.config).toBe(false);
+      expect(task.status).toBe('failed');
+      expect(h.specs[0]?.prompt).toContain('Limit: at most 1 executor turns for this task.');
+      expect(h.specs[2]?.prompt).toContain('[EXECUTOR REPORT] Cycle 1 of at most 1.');
+    });
+
+    it('turned off and on again in Task settings: recorded, the Planner is told, and the number has to cover what has run', async () => {
+      h.planner(P.cont('Write the heading')).executor(E.ok(['a.txt'])).planner(P.cont('Add the licence file')).executor(E.ok(['b.txt'])).planner(P.ask('Go on?'));
+      const runner = await h.create({ maxCycles: 2 });
+      await runner.start();
+      expect(h.task(runner).waiting?.kind).toBe('question');
+
+      runner.updateConfig({ noCycleLimit: true });
+      expect(h.task(runner).config.noCycleLimit).toBe(true);
+      expect(h.eventsOf(runner, 'config_changed').at(-1)?.changes).toEqual([{ field: 'noCycleLimit', from: false, to: true }]);
+      expect(h.task(runner).plannerNotes.at(-1)).toContain('removed the limit on executor turns');
+
+      // A third cycle now runs, where the limit of 2 would have failed the task.
+      h.planner(P.cont('List the commands in a third file')).executor(E.ok(['c.txt'])).planner(P.ask('And now?'));
+      await runner.answer('yes');
+      expect(h.task(runner).cycles).toBe(3);
+      expect(h.task(runner).status).toBe('waiting_user');
+
+      // Back on: 2 is below the 3 cycles already run, so a number has to come with it.
+      expect(() => runner.updateConfig({ noCycleLimit: false })).toThrow(/has run 3 cycles/);
+      runner.updateConfig({ noCycleLimit: false, maxCycles: 5 });
+      const task = h.task(runner);
+      expect('noCycleLimit' in task.config).toBe(false);
+      expect(task.config.maxCycles).toBe(5);
+      expect(task.plannerNotes.at(-1)).toContain('at most 5 executor turns, of which 3 are used');
+      h.assertScriptDone();
+    });
+  });
 });
 
 describe('safety net 2: loop detection', () => {

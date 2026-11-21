@@ -28,6 +28,7 @@ Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
 - **Claude Code installed and signed in on the machine**, version 2.1.251 or newer. The default Executor runs
   on Sonnet 5.5 from Claude Code 2.1.284; an older version runs it on Sonnet 5.
   Haiku 5.5, with its effort levels, needs Claude Code 2.1.293; an older version runs `haiku` on Haiku 4.5.
+  Fable 5.2 needs Claude Code 2.1.321.
 
 MushrifLoop never talks to the Anthropic API itself. Every turn is an ordinary `claude` process started on
 your machine, unmodified, under whoever is signed in to Claude Code. All the work runs on your own Claude
@@ -42,14 +43,59 @@ CLI is present, new enough and signed in before it lets you start.
 - **Coordination.** The app moves the work between the two sessions, and handles context, limits and
   handoffs itself.
 - **Follow-up.** A timeline of every cycle, a commit per cycle, and the full record of every turn.
-- **Your time.** A long task runs unattended and calls you only when a decision is yours.
+- **Your time.** A long task runs unattended and calls you only when a decision is yours. The cycle limit is
+  yours to set, or to turn off for a task you are following; a long task's timeline opens on its latest part
+  and shows the earlier part as you scroll up.
 - **Your tasks, in order.** Grouped by project, searchable, pinned to the top or archived; a deleted task
   goes to the Recycle Bin. The side panels can be widened or narrowed by dragging their edge.
-- **Files and screenshots.** Attach images, PDFs or any file to a task or a message: 📎, drag and drop, or
-  paste a screenshot. Both agents can open them; they stay in the task's folder, never in your project.
+- **Files and screenshots.** Attach images, PDFs or any file to a task or a message: the paperclip beside Send,
+  drag and drop, or paste a screenshot. Both agents can open them; they stay in the task's folder, never in your project.
 - **Arabic, right to left.** What you write and what the agents write back keeps each paragraph's own
   direction: Arabic from the right, English from the left, code always left to right. The Planner answers
   you in your language.
+- **Video tasks (Beta).** Describe a short video in words; the two sessions write it as Three.js code in your
+  project and render it to MP4. You approve the storyboard first and watch the result at the end. See
+  [Video tasks](#video-tasks).
+
+## Video tasks
+
+A task can be a **Video task** instead of a coding task: choose **Video** at the top of the New task dialog,
+describe the video, and set its length, its format (1920×1080 at 30 fps by default) and whether you also want
+a GIF.
+
+**Beta.** Video tasks are new. They have not yet been tested on a computer without a GPU, without Edge or
+Chrome, or without Node.js, nor with portrait or long videos.
+
+- **What happens.** The app copies a small video kit into a `video` folder of your project. The Planner and
+  the Executor write the video there as Three.js code and render it offline, frame by frame, to
+  `video/out/video.mp4`. The same frame always gives the same picture, so a render can stop and continue.
+- **Why you are asked twice.** Neither session can watch a video; they can only look at still frames. So the
+  app stops at two points, in every approval mode:
+  1. **The storyboard**, before anything is built. You approve it, or type notes for the Planner.
+  2. **The finished video.** You watch it in the app and approve it, or type notes for another round.
+- **Text on screen.** The agents quote on-screen text from the storyboard, never from an image, and they do
+  not judge spelling from stills. Whether Arabic or any other text is right is yours to confirm at the two
+  points above.
+- **The review panel.** The right panel shows where the storyboard and the render stand, and one strip of the
+  latest review images, newest first, as the Executor renders them; click one to see it at full size.
+- **A large file.** A detailed minute of video can be far over 10 MB, the limit for a video attached on
+  GitHub. The final card then says so and shows the one command, `npm run small`, that writes a second copy
+  under 10 MB beside the original.
+- **What a Video task needs.** Node.js with npm on the computer (Claude Code itself does not need them), and
+  Microsoft Edge or Google Chrome, which renders the frames. The Planner has to open the rendered frames, so
+  a Video task always uses the read-only Planner.
+- **What is downloaded, and only after you agree.** The first Video task in a folder asks before it downloads
+  anything, and says exactly what, how large and into which folder. On a computer with Edge or Chrome and an
+  ffmpeg that has libx264, that is about 116 MB of npm packages (three, Vite, TypeScript, Playwright without a
+  browser) and nothing else. Without such an ffmpeg, `ffmpeg-static` is added: about 80 MB, a build of ffmpeg
+  under the GNU GPL v3. Without Edge and Chrome, Playwright's Chromium is added: a 207 MB download. Everything
+  goes into `video/node_modules` in your project; delete that folder to remove it. None of it is part of
+  MushrifLoop, and npm and those tools' own installers make the downloads, not the app.
+- **What is not committed.** Rendered frames, stills and videos stay in `video/out/`, which git ignores.
+- **Not in this version:** sound, a timeline editor, several videos in one project.
+
+Generated videos must not use third-party logos or imitate a brand, and use only assets with a clear open
+licence; the agents are told so.
 
 ## What it costs
 
@@ -112,6 +158,9 @@ There is no auto-update. A new version is a new installer from the same page.
   you when your CLI is out of date, and a check of GitHub for the latest MushrifLoop release, at start and
   once a day, to tell you when a new version is out (switch it off in Settings → General). The app never
   downloads or installs an update itself. Everything else on the network is Claude Code's own traffic.
+- A **Video task** is the one case where more is downloaded: its tools, into your project's `video` folder,
+  by npm, and only after you have agreed to a dialog that lists them. The app itself still makes only the two
+  requests above. See [Video tasks](#video-tasks).
 - Deleting a task in the app moves its folder to the Recycle Bin. Your project, its git branch and Claude
   Code's own session files are not touched.
 - In a project it works on, the Executor may write long evidence to a `.mushrifloop/` folder. That folder is

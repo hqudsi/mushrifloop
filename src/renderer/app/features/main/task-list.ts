@@ -184,6 +184,9 @@ function store(key: string, value: unknown): void {
               <span class="pill error" [title]="task.unreadable">Unreadable</span>
             } @else {
               <app-status-pill [status]="task.status" [waiting]="task.waitingKind" />
+              @if (task.video) {
+                <span class="kind-tag" title="A Video task: the agents write a video as code and render it.">Video</span>
+              }
               <span>{{ cycles(task) }}</span>
               <span class="elapsed mono">{{ elapsed(task) }}</span>
             }
@@ -324,6 +327,15 @@ function store(key: string, value: unknown): void {
         text-overflow: ellipsis;
       }
       .item.selected .project {
+        color: var(--text-3);
+      }
+      .kind-tag {
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        padding: 0 5px;
+        border: 1px solid var(--border-strong);
+        border-radius: 4px;
         color: var(--text-3);
       }
       .row3 {
@@ -551,7 +563,7 @@ export class TaskList {
 
   protected cycles(task: TaskSummary): string {
     if (task.status === 'running' || task.busy) return `cycle ${Math.max(task.cycles, 1)}`;
-    if (task.status === 'failed') return `${task.cycles} / ${task.maxCycles} cycles`;
+    if (task.status === 'failed' && !task.noCycleLimit) return `${task.cycles} / ${task.maxCycles} cycles`;
     return `${task.cycles} ${task.cycles === 1 ? 'cycle' : 'cycles'}`;
   }
 

@@ -5,6 +5,8 @@
  * and turns status changes into notifications (SPEC.md §10).
  */
 
+import { VIDEO_KIT_DIR, videoSettingsFromRequest, type InstallPlan, type VideoReview, type VideoSettings, type VideoState } from '../shared/video';
+import { StoryboardValidator, mediaFile, outputFolder, readVideoReview, reviewImagePath } from './video/review';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -21,6 +23,7 @@ import type {
   TaskDetail,
   TaskLoadFailure,
   TaskNoticeMessage,
+  VideoInstallPlan,
   TaskSummary,
   TaskToast,
   UsageReport,
@@ -33,7 +36,7 @@ import { checkAttachments, parseAttachmentInputs, saveAttachments } from './atta
 import { accountLabel, readSeenAccounts, recordAccount } from './seen-accounts';
 import { activityFromEvents, applyActivityEvent, emptyActivity, type TurnActivity } from '../shared/turn-activity';
 import { buildEnv, modelChangeVersionBlock, parseVersion, resolveClaudeBinary, runClaude } from './claude-cli';
-import { dataFolder, tasksFolder, usageFile } from './config';
+import { dataFolder, tasksFolder, usageFile, videoFolder } from './config';
 import { parseUsageStream } from './usage-report';
 import { launchEditor, type EditorLaunchResult } from './editor';
 import { errorMessage, log } from './logger';
@@ -61,6 +64,8 @@ import { localDay } from './orchestrator/safety';
 import { LineSplitter, toEvents, type TurnEvent } from './session-runner';
 
 const TASK_NOTICE_DEBOUNCE_MS = 40;
+/** Reading a task's files for the window took this long or longer: worth a line in the log. */
+const SLOW_TASK_READ_MS = 150;
 const FINISHED_ACTIVITY_CACHE = 30;
 /** How long a starting action may take to fail before it is reported as started. */
 const EARLY_FAILURE_WINDOW_MS = 250;
@@ -123,6 +128,7 @@ export function summarize(task: TaskRecord, busy: boolean): TaskSummary {
     projectName: path.basename(task.projectDir),
     projectKey: projectKey(task.projectDir),
     archived: !!task.archivedAt,
+    video: task.kind === 'video',
     pinnedToTop: !!task.pinnedAt,
     gitBranch: task.git?.branch ?? null,
     status: task.status,
@@ -130,6 +136,7 @@ export function summarize(task: TaskRecord, busy: boolean): TaskSummary {
     waitingKind: task.waiting?.kind ?? null,
     cycles: task.cycles,
     maxCycles: task.config.maxCycles,
+    noCycleLimit: task.config.noCycleLimit === true,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
     statusChangedAt: task.statusChangedAt,
@@ -158,6 +165,7 @@ export function unreadableSummary(taskId: string, folder: string, error: string)
     projectName: path.basename(folder),
     projectKey: projectKey(folder),
     archived: false,
+    video: false,
     pinnedToTop: false,
     gitBranch: null,
     status: 'error',
@@ -165,6 +173,7 @@ export function unreadableSummary(taskId: string, folder: string, error: string)
     waitingKind: null,
     cycles: 0,
     maxCycles: 0,
+    noCycleLimit: false,
     createdAt: changed,
     updatedAt: changed,
     statusChangedAt: changed,
@@ -203,6 +212,7 @@ export function sanitizeOverrides(raw: unknown): Partial<TaskConfig> {
   };
   const maxCycles = int('maxCycles', 1, 500);
   if (maxCycles !== undefined) out.maxCycles = maxCycles;
+  if (raw['noCycleLimit'] === true) out.noCycleLimit = true;
   const rollover = int('rolloverPercent', 5, 95);
   if (rollover !== undefined) out.rolloverPercent = rollover;
   if (raw['freshExecutorAfterRejectedTurns'] === null) out.freshExecutorAfterRejectedTurns = null;
@@ -230,6 +240,12 @@ export function sanitizeOverrides(raw: unknown): Partial<TaskConfig> {
     out.standingInstructions = { planner: standing['planner'], executor: standing['executor'] };
   }
   return out;
+}
+
+/** The consent the New task dialog sent, as three booleans; null when it sent none. */
+export function parseInstallPlan(raw: unknown): InstallPlan | null {
+  if (!isRecord(raw)) return null;
+  return { packages: raw['packages'] === true, ffmpeg: raw['ffmpeg'] === true, chromium: raw['chromium'] === true };
 }
 
 /** A TaskAction from the renderer, checked field by field. */
@@ -299,6 +315,16 @@ export function parseAction(raw: unknown): TaskAction | null {
       return typeof raw['archived'] === 'boolean' ? { kind: 'archive', archived: raw['archived'] } : null;
     case 'pin':
       return typeof raw['pinned'] === 'boolean' ? { kind: 'pin', pinned: raw['pinned'] } : null;
+    case 'consent_install':
+    case 'recheck_image':
+    case 'approve_storyboard':
+    case 'approve_video':
+      return { kind: raw['kind'] };
+    case 'reject_storyboard':
+    case 'reject_video': {
+      const notes = text(raw['notes']);
+      return notes === null ? null : { kind: raw['kind'], notes };
+    }
     default:
       return null;
   }
@@ -323,6 +349,10 @@ export function parseConfigUpdate(raw: unknown): ConfigUpdate | null {
     const n = num(raw['maxCycles']);
     if (n === undefined) return null;
     out.maxCycles = n;
+  }
+  if (raw['noCycleLimit'] !== undefined) {
+    if (typeof raw['noCycleLimit'] !== 'boolean') return null;
+    out.noCycleLimit = raw['noCycleLimit'];
   }
   if (raw['rolloverPercent'] !== undefined) {
     const n = num(raw['rolloverPercent']);
@@ -600,7 +630,13 @@ export class TaskService {
     const loadError = this.loadErrors.get(taskId);
     if (loadError !== undefined) return { unreadable: true, taskId, folder, error: loadError };
     try {
-      return { task: this.store.readTask(taskId), events: this.store.readEvents(taskId), busy: this.runners.get(taskId)?.busy ?? false };
+      const started = Date.now();
+      const detail = { task: this.store.readTask(taskId), events: this.store.readEvents(taskId), busy: this.runners.get(taskId)?.busy ?? false };
+      // A long task's events file is read whole, in this process: a slow read is written down, so the log
+      // can answer "why did it hang" (NOTES.md §77).
+      const ms = Date.now() - started;
+      if (ms >= SLOW_TASK_READ_MS) log.info('task.read_slow', { taskId, events: detail.events.length, ms });
+      return detail;
     } catch (err) {
       log.warn('task.read_failed', { taskId, error: errorMessage(err) });
       return { unreadable: true, taskId, folder, error: `Could not read this task from ${folder}: ${errorMessage(err)}` };
@@ -774,6 +810,35 @@ export class TaskService {
   }
 
   /** Git state of a folder for the New task dialog. */
+  /**
+   * What a Video task in this folder would download (SPEC.md §21.3): the same plan the task computes when it
+   * starts, so the New task dialog can show it and take the consent up front. Only looks; installs nothing.
+   */
+  async videoInstallPlan(dir: unknown): Promise<VideoInstallPlan> {
+    const projectDir = typeof dir === 'string' ? dir.trim() : '';
+    const folder = projectDir ? path.join(projectDir, VIDEO_KIT_DIR).split(path.sep).join('/') : '';
+    const empty: VideoInstallPlan = { folder, kit: 'absent', node: null, npm: null, browser: null, plan: { packages: true, ffmpeg: false, chromium: false }, error: null };
+    const port = this.deps?.video;
+    if (!projectDir) return { ...empty, error: 'Choose a project folder first.' };
+    if (!port) return { ...empty, error: this.setupError ?? 'Video tasks are not available.' };
+    try {
+      const [pre, ffmpeg] = await Promise.all([port.prerequisites(), port.ffmpegOnPath()]);
+      const kit = port.inspectKit(projectDir);
+      const browser = port.installedBrowser();
+      return {
+        folder,
+        kit: kit.state,
+        node: pre.node,
+        npm: pre.npm,
+        browser,
+        plan: { packages: !kit.packagesInstalled, ffmpeg: !kit.ffmpegInstalled && !ffmpeg, chromium: !kit.chromiumDownloaded && browser === null },
+        error: null,
+      };
+    } catch (err) {
+      return { ...empty, error: errorMessage(err) };
+    }
+  }
+
   async inspectProject(dir: unknown): Promise<ProjectInspection> {
     const raw = typeof dir === 'string' ? dir.trim() : '';
     const resolved = raw === '' ? '' : path.resolve(raw);
@@ -869,11 +934,28 @@ export class TaskService {
     } catch (err) {
       return { ok: false, error: errorMessage(err), nextStep: 'Remove that file, or attach it again.' };
     }
+    // A Video task (SPEC.md §21.2): its settings are checked here, in the main process.
+    const isVideo = request['kind'] === 'video';
+    let video: VideoSettings | null = null;
+    if (isVideo) {
+      const parsed = videoSettingsFromRequest(request['video']);
+      if (!parsed.ok) return { ok: false, error: parsed.error };
+      video = parsed.settings;
+    } else if (request['kind'] !== undefined && request['kind'] !== 'code') {
+      return { ok: false, error: 'Unknown kind of task.' };
+    }
     let runner: TaskRunner;
     try {
-      const config = taskConfigFromSettings(this.options.getSettings(), sanitizeOverrides(request['overrides']));
+      const overrides = sanitizeOverrides(request['overrides']);
+      // No required skills by default for a Video task (SPEC.md §21.2); the user may still name some.
+      if (video && overrides.requiredSkills === undefined) overrides.requiredSkills = [];
+      const config = taskConfigFromSettings(this.options.getSettings(), overrides);
       const attach = checked.length > 0 ? (dir: string) => saveAttachments(dir, checked, 0, new Date()) : undefined;
-      runner = await TaskRunner.create({ description, projectDir, config, ...(attach ? { attach } : {}) }, ready.deps);
+      const consent = video ? parseInstallPlan(request['videoConsent']) : null;
+      runner = await TaskRunner.create(
+        { description, projectDir, config, ...(attach ? { attach } : {}), ...(video ? { kind: 'video' as const, video } : {}), ...(consent ? { videoConsent: consent } : {}) },
+        ready.deps,
+      );
     } catch (err) {
       if (err instanceof TaskCreationError) return { ok: false, error: err.message, nextStep: err.nextStep };
       log.error('task.create_failed', { error: errorMessage(err) });
@@ -935,8 +1017,10 @@ export class TaskService {
       case 'rename':
       case 'archive':
       case 'pin':
+      case 'recheck_image':
         try {
           if (action.kind === 'rollover_now') runner.requestRollover(action.agent);
+          else if (action.kind === 'recheck_image') runner.recheckImage();
           else if (action.kind === 'set_approval_mode') runner.setApprovalMode(action.mode);
           else if (action.kind === 'rename') runner.rename(action.title);
           else if (action.kind === 'archive') {
@@ -998,6 +1082,16 @@ export class TaskService {
         for (const a of attached) if (!kept.has(a.file)) fs.rmSync(path.join(this.store.attachmentsDir(taskId), a.file), { force: true });
         return result;
       }
+      case 'consent_install':
+        return this.launch(taskId, () => runner.consentInstall());
+      case 'approve_storyboard':
+        return this.launch(taskId, () => runner.approveStoryboard());
+      case 'reject_storyboard':
+        return this.launch(taskId, () => runner.rejectStoryboard(action.notes));
+      case 'approve_video':
+        return this.launch(taskId, () => runner.approveVideo());
+      case 'reject_video':
+        return this.launch(taskId, () => runner.rejectVideo(action.notes));
       case 'waive_skill':
         return this.launch(taskId, () => runner.waiveSkill(action.skill, action.note));
       case 'decline_waiver':
@@ -1019,6 +1113,42 @@ export class TaskService {
    * Code's session files. If the Recycle Bin refuses, nothing changes and the raw error is returned.
    */
   /** An attached file of a task, by its stored name: only one the task recorded (SPEC.md §10). */
+  // --- A Video task's own video/ folder (SPEC.md §21.7): read-only, and nothing outside it ---
+
+  private videoTask(taskId: string): { projectDir: string; video: VideoState } | null {
+    const task = this.runners.get(taskId)?.snapshot;
+    return task && task.kind === 'video' && task.video ? { projectDir: task.projectDir, video: task.video } : null;
+  }
+
+  private storyboards(): StoryboardValidator {
+    return (this.storyboardValidator ??= new StoryboardValidator(path.join(videoFolder(), 'schemas', 'storyboard.schema.json')));
+  }
+
+  videoReview(taskId: string): VideoReview | null {
+    const found = this.videoTask(taskId);
+    return found ? readVideoReview(taskId, found.projectDir, found.video, this.storyboards()) : null;
+  }
+
+  videoImagePath(taskId: string, name: unknown): string | null {
+    const found = this.videoTask(taskId);
+    return found ? reviewImagePath(found.projectDir, name) : null;
+  }
+
+  /** The MP4 or the GIF, for the media scheme. Any other name is null. */
+  videoMedia(taskId: string, which: string): { file: string; type: string } | null {
+    const found = this.videoTask(taskId);
+    return found ? mediaFile(found.projectDir, which) : null;
+  }
+
+  videoOpenTarget(taskId: string, what: unknown): string | null {
+    const found = this.videoTask(taskId);
+    if (!found) return null;
+    if (what === 'video') return mediaFile(found.projectDir, 'video.mp4')?.file ?? null;
+    if (what === 'gif') return mediaFile(found.projectDir, 'video.gif')?.file ?? null;
+    const folder = outputFolder(found.projectDir);
+    return what === 'folder' && fs.existsSync(folder) ? folder : null;
+  }
+
   attachmentPath(taskId: string, file: string): { path: string; kind: Attachment['kind'] } | null {
     const found = this.runners.get(taskId)?.snapshot.attachments?.find((a) => a.file === file);
     if (!found) return null;
@@ -1120,6 +1250,8 @@ export class TaskService {
     });
   }
 
+  private storyboardValidator: StoryboardValidator | null = null;
+
   private readyDeps(): { ok: true; deps: OrchestratorDeps } | { ok: false; result: ActionResult } {
     this.refreshIfIdle();
     if (!this.deps) {
@@ -1161,6 +1293,9 @@ export class TaskService {
         this.options.send({ type: 'turn_event', taskId: notice.taskId, turnId: notice.turnId, agent: notice.agent, seq: live.activity.seq, event });
         break;
       }
+      case 'setup_output':
+        this.options.send({ type: 'setup_output', taskId: notice.taskId, step: notice.step, text: notice.text });
+        break;
       case 'task':
         this.scheduleTask(notice.task);
         break;

@@ -112,7 +112,7 @@ export function cycleToast(task: TaskRecord, cycle: CycleSummary, at: string): T
     taskId: task.id,
     category: 'cycle',
     tone: truncated ? 'bad' : 'info',
-    title: `Cycle ${cycle.cycle} of ${task.config.maxCycles} finished`,
+    title: task.config.noCycleLimit ? `Cycle ${cycle.cycle} finished` : `Cycle ${cycle.cycle} of ${task.config.maxCycles} finished`,
     body: `Task '${taskTitle(task)}' — the Executor reported ${status}; ${files} ${files === 1 ? 'file' : 'files'} changed.`,
     at,
   };

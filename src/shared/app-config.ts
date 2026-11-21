@@ -25,6 +25,18 @@ export const APP_SLUG = APP_NAME.toLowerCase();
 /** Custom protocol used to serve the built renderer in production (see src/main/main.ts). */
 export const APP_PROTOCOL = APP_SLUG;
 
+/**
+ * A second scheme, for a Video task's rendered MP4 and GIF (SPEC.md §21.7): `<slug>-media://task/<id>/video.mp4`.
+ * Its handler answers Range requests itself, which a `<video>` element needs in order to seek. The renderer's
+ * content security policy names it (src/renderer/index.html); a test keeps the two in step.
+ */
+export const MEDIA_PROTOCOL = `${APP_SLUG}-media`;
+
+/** The URL of a Video task's rendered file. `version` changes when the file does, so a new render is not served from cache. */
+export function videoMediaUrl(taskId: string, file: 'video.mp4' | 'video.gif', version: number): string {
+  return `${MEDIA_PROTOCOL}://task/${encodeURIComponent(taskId)}/${file}?v=${Math.round(version)}`;
+}
+
 /** The `window` property the preload script exposes the IPC bridge under. */
 export const APP_BRIDGE = APP_SLUG;
 

@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- The style toolkit's own test scene, rendered by "npm test". It is not part of the video. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Style toolkit test</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #111;
+        color: #ddd;
+        font: 13px/1.4 system-ui, sans-serif;
+      }
+      /* Render mode: the canvas is the page, at its exact pixel size. */
+      body.render {
+        overflow: hidden;
+      }
+      canvas#video {
+        display: block;
+      }
+      /* Preview mode: the canvas is scaled to fit; its drawing buffer keeps the video's real size. */
+      body.preview canvas#video {
+        width: min(100vw, calc((100vh - 56px) * var(--aspect)));
+        height: auto;
+        margin: 0 auto;
+      }
+      #ui {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        height: 56px;
+        padding: 0 16px;
+        box-sizing: border-box;
+      }
+      #ui input[type='range'] {
+        flex: 1;
+      }
+      #ui button {
+        font: inherit;
+        padding: 4px 12px;
+      }
+      #ui output {
+        min-width: 190px;
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="video"></canvas>
+    <script type="module" src="/src/style/selftest-page.ts"></script>
+  </body>
+</html>

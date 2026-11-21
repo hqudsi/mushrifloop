@@ -1,0 +1,25 @@
+{
+  "name": "video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A video written as Three.js code and rendered offline, frame by frame, to MP4.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "setup": "node scripts/setup.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "stills": "node scripts/stills.mjs",
+    "render": "node scripts/render.mjs",
+    "gif": "node scripts/gif.mjs",
+    "small": "node scripts/small.mjs",
+    "test": "node scripts/lock-test.mjs && node scripts/test.mjs"
+  },
+  "devDependencies": {
+    "@types/three": "0.187.0",
+    "playwright-core": "1.65.0",
+    "three": "0.187.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.7"
+  }
+}

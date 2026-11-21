@@ -9,8 +9,8 @@
 
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 
-import { storageKey } from '../../../../shared/app-config';
-import type { CreateTaskRequest, ProjectInspection } from '../../../../shared/ipc';
+import { APP_NAME, storageKey } from '../../../../shared/app-config';
+import type { CreateTaskRequest, ProjectInspection, VideoInstallPlan } from '../../../../shared/ipc';
 import {
   FABLE_WARNING,
   MAX_EFFORT_WARNING,
@@ -31,11 +31,12 @@ import {
   type PlannerContextMode,
 } from '../../../../shared/settings';
 import type { AgentRole } from '../../../../shared/task-model';
+import { VIDEO_DURATION_LIMITS, VIDEO_FORMATS, planNeedsDownload, planSizes, type TaskKind } from '../../../../shared/video';
 import { formatTokens } from '../../../../shared/format';
 import { api } from '../../core/api';
 import { SettingsStore } from '../../core/settings-store';
 import { TasksStore } from '../../core/tasks-store';
-import { AttachmentDraft, AttachmentTray } from '../../shared/attachments';
+import { AttachIcon, AttachmentDraft, AttachmentTray } from '../../shared/attachments';
 
 const LAST_FOLDER_KEY = storageKey('lastProjectFolder');
 const INSPECT_DEBOUNCE_MS = 300;
@@ -62,7 +63,7 @@ function readLastFolder(): string {
 @Component({
   selector: 'app-new-task-dialog',
   standalone: true,
-  imports: [AttachmentTray],
+  imports: [AttachIcon, AttachmentTray],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(keydown)': 'onKey($event)' },
   template: `
@@ -74,6 +75,24 @@ function readLastFolder(): string {
         </div>
 
         <div class="body">
+          <!-- Kind of task (SPEC.md §21.2) -->
+          <div class="kind">
+            <div class="seg kind-seg" role="group" aria-label="Kind of task">
+              <button type="button" [attr.aria-pressed]="kind() === 'code'" (click)="setKind('code')">Code</button>
+              <button type="button" [attr.aria-pressed]="kind() === 'video'" (click)="setKind('video')">Video <span class="beta-tag">Beta</span></button>
+            </div>
+            @if (kind() === 'video') {
+              <span class="hint">
+                The agents write the video as Three.js code in a <span class="mono">video</span> folder of the project and render it to MP4.
+                You approve the storyboard before it is built, and the finished video at the end.
+              </span>
+              <span class="hint">
+                Beta: not yet tested on a computer without a GPU, without Edge or Chrome, or without Node.js, nor with portrait or long
+                videos.
+              </span>
+            }
+          </div>
+
           <!-- Project folder -->
           <div class="field">
             <label class="label" for="nt-folder">Project folder</label>
@@ -102,22 +121,86 @@ function readLastFolder(): string {
             (dragleave)="dropping.set(false)"
             (drop)="onDrop($event)"
           >
-            <label class="label" for="nt-desc">Task description</label>
+            <label class="label" for="nt-desc">{{ kind() === 'video' ? 'Describe the video' : 'Task description' }}</label>
             <textarea
               #description
               id="nt-desc"
               class="textarea desc"
-              placeholder="What should the Planner and Executor achieve? The first line becomes the task's title."
+              [placeholder]="descriptionPlaceholder()"
               [value]="descriptionText()"
               (input)="descriptionText.set($any($event.target).value)"
               (paste)="onPaste($event)"
             ></textarea>
             <div class="attach-row">
-              <button type="button" class="btn" [disabled]="submitting()" (click)="files.pick()">📎 Attach files</button>
+              <button type="button" class="btn" [disabled]="submitting()" (click)="files.pick()">
+                <app-attach-icon [size]="15" />Attach files
+              </button>
               <span class="hint">or drop them here, or paste an image. The agents can read images, PDFs and text.</span>
             </div>
             <app-attachment-tray [items]="files.items()" [problem]="files.problem()" (removed)="files.remove($event)" />
           </div>
+
+          @if (kind() === 'video') {
+            <!-- Length, format, GIF (SPEC.md §21.2) -->
+            <div class="video-row">
+              <div class="field">
+                <label class="label" for="nt-video-length">Length</label>
+                <div class="suffixed">
+                  <input
+                    id="nt-video-length"
+                    class="input mono"
+                    type="number"
+                    [min]="durationLimits.min"
+                    [max]="durationLimits.max"
+                    [value]="videoLength()"
+                    (change)="videoLength.set(clamp($any($event.target).value, durationLimits.min, durationLimits.max, videoLength()))"
+                  />
+                  <span class="suffix">seconds</span>
+                </div>
+              </div>
+              <div class="field">
+                <label class="label" for="nt-video-format">Format</label>
+                <select id="nt-video-format" class="select" (change)="videoFormat.set($any($event.target).value)">
+                  @for (f of videoFormats; track f.id) {
+                    <option [value]="f.id" [selected]="f.id === videoFormat()">{{ f.label }}</option>
+                  }
+                </select>
+              </div>
+              <label class="check">
+                <input type="checkbox" [checked]="videoGif()" (change)="videoGif.set($any($event.target).checked)" />
+                <span>Also make a GIF</span>
+              </label>
+            </div>
+
+            <!-- What will be downloaded, for the path actually taken (SPEC.md §21.3) -->
+            <div class="downloads" [class.bad]="videoBlock() !== null">
+              <div class="row-title">Video tools</div>
+              @if (videoBlock(); as block) {
+                <span class="hint bad">{{ block }}</span>
+              } @else if (videoPlanLoading() || !videoPlan()) {
+                <span class="hint">{{ folder().trim() === '' ? 'Choose the project folder to see what a Video task needs there.' : 'Checking what this folder needs…' }}</span>
+              } @else if (!videoNeedsDownload()) {
+                <span class="hint">Already installed in <span class="mono">{{ videoPlan()?.folder }}</span>. Nothing will be downloaded.</span>
+              } @else {
+                <span class="hint">
+                  The first Video task in a folder downloads its tools into <span class="mono">{{ videoPlan()?.folder }}</span>, about
+                  {{ videoSizes().diskMb }} MB in all. {{ appName }} itself requests nothing: npm and the tools' own installers do.
+                </span>
+                <ul class="dl">
+                  @for (line of videoSizes().lines; track line) {
+                    <li>{{ line }}</li>
+                  }
+                </ul>
+                <label class="check">
+                  <input type="checkbox" [checked]="videoConsent()" (change)="videoConsent.set($any($event.target).checked)" />
+                  <span>Download these when the task starts</span>
+                </label>
+                @if (!videoConsent()) {
+                  <span class="hint">Left unticked, the task asks you before it downloads anything.</span>
+                }
+              }
+            </div>
+          }
 
           <!-- Models -->
           <div class="grid-2">
@@ -160,28 +243,40 @@ function readLastFolder(): string {
           <div class="grid-2 top-align">
             <div class="field">
               <label class="label">Max cycles</label>
-              <div class="stepper">
-                <button type="button" aria-label="Fewer cycles" (click)="stepCycles(-1)">−</button>
+              <div class="stepper" [class.off]="noCycleLimit()">
+                <button type="button" aria-label="Fewer cycles" [disabled]="noCycleLimit()" (click)="stepCycles(-1)">−</button>
                 <input
                   class="step-input"
                   type="number"
                   min="1"
                   max="500"
                   aria-label="Max cycles"
+                  [disabled]="noCycleLimit()"
                   [value]="maxCycles()"
                   (change)="setCycles($any($event.target).value)"
                 />
-                <button type="button" aria-label="More cycles" (click)="stepCycles(1)">+</button>
+                <button type="button" aria-label="More cycles" [disabled]="noCycleLimit()" (click)="stepCycles(1)">+</button>
               </div>
+              <label class="no-limit">
+                <input type="checkbox" [checked]="noCycleLimit()" (change)="noCycleLimit.set($any($event.target).checked)" />
+                No limit
+              </label>
+              @if (noCycleLimit()) {
+                <span class="hint">The task then stops only when the Planner says done, at a usage limit, or when you stop it.</span>
+              }
             </div>
             <div class="field">
               <label class="label">Planner context</label>
               <div class="seg">
                 @for (mode of contextModes; track mode.id) {
-                  <button type="button" [attr.aria-pressed]="contextMode() === mode.id" (click)="contextMode.set(mode.id)">{{ mode.label }}</button>
+                  <button type="button" [attr.aria-pressed]="contextMode() === mode.id" [disabled]="kind() === 'video'" (click)="contextMode.set(mode.id)">{{ mode.label }}</button>
                 }
               </div>
-              <span class="hint">{{ contextMode() === 'read_only' ? 'The Planner may read the project (Read, Glob, Grep).' : 'The Planner sees only the Executor’s reports.' }} Fixed once the task is created.</span>
+              @if (kind() === 'video') {
+                <span class="hint">The Planner has to open the rendered frames, so it reads the project folder. A Video task cannot use the isolated Planner.</span>
+              } @else {
+                <span class="hint">{{ contextMode() === 'read_only' ? 'The Planner may read the project (Read, Glob, Grep).' : 'The Planner sees only the Executor’s reports.' }} Fixed once the task is created.</span>
+              }
             </div>
           </div>
 
@@ -407,6 +502,56 @@ function readLastFolder(): string {
         border-color: var(--planner);
         border-style: dashed;
       }
+      .kind {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .kind-seg {
+        align-self: flex-start;
+      }
+      .beta-tag {
+        margin-inline-start: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        padding: 0 4px;
+        border: 1px solid currentColor;
+        border-radius: 4px;
+        opacity: 0.75;
+      }
+      .video-row {
+        display: grid;
+        grid-template-columns: 150px 1fr auto;
+        gap: 14px;
+        align-items: end;
+      }
+      .check {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--text-2);
+        min-height: 30px;
+      }
+      .downloads {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      .downloads.bad {
+        border-color: var(--danger);
+      }
+      .dl {
+        margin: 0;
+        padding-inline-start: 18px;
+        font-size: 12px;
+        color: var(--text-2);
+        line-height: 1.5;
+      }
       .grid-2 {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -615,6 +760,8 @@ export class NewTaskDialog {
   protected readonly planner = signal<AgentChoice>({ model: this.defaults.plannerModel, effort: this.defaults.plannerEffort });
   protected readonly executor = signal<AgentChoice>({ model: this.defaults.executorModel, effort: this.defaults.executorEffort });
   protected readonly maxCycles = signal(this.defaults.maxCycles);
+  /** SPEC.md §5 net 1: the limit is optional; the number is kept for when it is turned back on. */
+  protected readonly noCycleLimit = signal(this.defaults.noCycleLimit);
   protected readonly contextMode = signal<PlannerContextMode>(this.defaults.plannerContextMode);
   protected readonly approval = signal<ApprovalMode>(this.defaults.approvalMode);
   protected readonly moreOpen = signal(false);
@@ -631,6 +778,46 @@ export class NewTaskDialog {
   protected readonly freshAfter = signal<number | null>(this.defaults.freshExecutorAfterRejectedTurns);
   protected readonly freshMax = FRESH_EXECUTOR_MAX_TURNS;
   protected readonly standing = signal<Record<AgentRole, string>>({ ...this.defaults.standingPrompts });
+
+  /** SPEC.md §21.2: a Video task, with its length, format and GIF choice. */
+  protected readonly kind = signal<TaskKind>('code');
+  protected readonly videoFormats = VIDEO_FORMATS;
+  protected readonly durationLimits = VIDEO_DURATION_LIMITS;
+  protected readonly videoLength = signal<number>(VIDEO_DURATION_LIMITS.default);
+  protected readonly videoFormat = signal<string>(VIDEO_FORMATS[0]?.id ?? '');
+  protected readonly videoGif = signal(false);
+  /** What a Video task in the chosen folder would download (SPEC.md §21.3), from the main process. */
+  protected readonly videoPlan = signal<VideoInstallPlan | null>(null);
+  protected readonly videoPlanLoading = signal(false);
+  /** The human ticked "Download these when the task starts": the consent goes with the request. */
+  protected readonly videoConsent = signal(false);
+  /** The required skills a coding task would have, kept while the kind is Video (which starts with none). */
+  private codeSkills: string[] | null = null;
+  private planSeq = 0;
+
+  protected readonly descriptionPlaceholder = computed(() =>
+    this.kind() === 'video'
+      ? "What should the video show, and what text is on screen? The first line becomes the task's title."
+      : "What should the Planner and Executor achieve? The first line becomes the task's title.",
+  );
+  protected readonly videoNeedsDownload = computed(() => {
+    const plan = this.videoPlan();
+    return plan !== null && planNeedsDownload(plan.plan);
+  });
+  protected readonly videoSizes = computed(() => planSizes(this.videoPlan()?.plan ?? { packages: false, ffmpeg: false, chromium: false }));
+  /** Why a Video task cannot be created here; null when it can. */
+  protected readonly videoBlock = computed<string | null>(() => {
+    if (this.kind() !== 'video') return null;
+    const plan = this.videoPlan();
+    if (!plan || this.videoPlanLoading()) return null;
+    if (plan.error) return plan.error;
+    if (plan.node === null || plan.npm === null) {
+      return `A Video task needs Node.js and npm, and they were not found on this computer. Install Node.js from nodejs.org (npm comes with it), then restart ${APP_NAME}.`;
+    }
+    if (plan.kit === 'foreign') return `This project already has a "video" folder that is not a video kit (${plan.folder}). Move or rename it first; nothing in it is touched.`;
+    return null;
+  });
+  protected readonly appName = APP_NAME;
 
   protected readonly inspection = signal<ProjectInspection | null>(null);
   protected readonly inspecting = signal(false);
@@ -692,6 +879,7 @@ export class NewTaskDialog {
       this.folder().trim() !== '' &&
       this.descriptionText().trim() !== '' &&
       this.inspection()?.exists !== false &&
+      (this.kind() !== 'video' || (this.videoPlan() !== null && !this.videoPlanLoading() && this.videoBlock() === null)) &&
       this.fableBlock(this.planner().model) === null &&
       this.fableBlock(this.executor().model) === null,
   );
@@ -710,6 +898,7 @@ export class NewTaskDialog {
         this.planner.set({ ...c.planner });
         this.executor.set({ ...c.executor });
         this.maxCycles.set(c.maxCycles);
+        this.noCycleLimit.set(c.noCycleLimit === true);
         this.contextMode.set(c.plannerContextMode);
         this.approval.set(c.approvalMode);
         this.timeoutMin.set(Math.round(c.turnTimeoutMs / 60_000));
@@ -726,6 +915,12 @@ export class NewTaskDialog {
     effect(() => {
       const folder = this.folder();
       untracked(() => this.scheduleInspect(folder));
+    });
+    // A Video task: ask the main process what this folder would have to download.
+    effect(() => {
+      const folder = this.folder().trim();
+      const video = this.kind() === 'video';
+      untracked(() => this.loadVideoPlan(video ? folder : ''));
     });
     setTimeout(() => this.descriptionBox()?.nativeElement.focus());
   }
@@ -770,6 +965,51 @@ export class NewTaskDialog {
   protected setEffort(agent: AgentRole, effort: string): void {
     const target = agent === 'planner' ? this.planner : this.executor;
     target.update((c) => ({ ...c, effort: coerceEffort(c.model, effort as EffortLevel) }));
+  }
+
+  /**
+   * Code or Video. A Video task starts with no required skills and a read-only Planner (SPEC.md §21.2);
+   * switching back gives a coding task its own choices again.
+   */
+  protected setKind(kind: TaskKind): void {
+    if (kind === this.kind()) return;
+    if (kind === 'video') {
+      this.codeSkills = this.skills();
+      this.skills.set([]);
+      this.contextMode.set('read_only');
+    } else {
+      if (this.codeSkills) this.skills.set(this.codeSkills);
+      this.codeSkills = null;
+      this.contextMode.set(this.defaults.plannerContextMode);
+    }
+    this.kind.set(kind);
+  }
+
+  private loadVideoPlan(folder: string): void {
+    const seq = ++this.planSeq;
+    this.videoConsent.set(false);
+    if (folder === '') {
+      this.videoPlan.set(null);
+      this.videoPlanLoading.set(false);
+      return;
+    }
+    this.videoPlanLoading.set(true);
+    setTimeout(() => {
+      if (seq !== this.planSeq) return;
+      void api()
+        .videoInstallPlan(folder)
+        .then((plan) => {
+          if (seq === this.planSeq) this.videoPlan.set(plan);
+        })
+        .catch((err: unknown) => {
+          if (seq === this.planSeq) {
+            this.videoPlan.set({ folder, kit: 'absent', node: null, npm: null, browser: null, plan: { packages: true, ffmpeg: false, chromium: false }, error: String(err) });
+          }
+        })
+        .finally(() => {
+          if (seq === this.planSeq) this.videoPlanLoading.set(false);
+        });
+    }, INSPECT_DEBOUNCE_MS);
   }
 
   protected stepCycles(delta: number): void {
@@ -869,6 +1109,7 @@ export class NewTaskDialog {
         planner: this.planner(),
         executor: this.executor(),
         maxCycles: this.maxCycles(),
+        ...(this.noCycleLimit() ? { noCycleLimit: true } : {}),
         plannerContextMode: this.contextMode(),
         approvalMode: this.approval(),
         turnTimeoutMs: this.timeoutMin() * 60_000,
@@ -883,6 +1124,13 @@ export class NewTaskDialog {
       // A running task would refuse the start; the new task is then kept as a draft (SPEC.md §6).
       start: this.running() === null,
     };
+    if (this.kind() === 'video') {
+      request.kind = 'video';
+      request.video = { durationSec: this.videoLength(), format: this.videoFormat(), gif: this.videoGif() };
+      const plan = this.videoPlan()?.plan;
+      // Only what was shown and ticked is agreed to; anything else the task asks about when it starts.
+      if (plan && this.videoConsent() && planNeedsDownload(plan)) request.videoConsent = plan;
+    }
     try {
       const result = await this.store.createTask(request);
       if (!result.taskId) {

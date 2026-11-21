@@ -9,6 +9,8 @@ import { formatDateTime } from '../../../../shared/format';
 import type { AccountRecord, AuthReading, TaskRecord } from '../../../../shared/task-model';
 import { TasksStore } from '../../core/tasks-store';
 import { ApprovalCard } from './approval-card';
+import { VideoConsent, VideoSetupLog } from './video-cards';
+import { FinalVideoCard, StoryboardCard } from './video-gates';
 
 function accountLine(a: AccountRecord): string {
   if (a.email === null && a.apiKeySource) return `API key (${a.apiKeySource})`;
@@ -18,10 +20,11 @@ function accountLine(a: AccountRecord): string {
 @Component({
   selector: 'app-state-panel',
   standalone: true,
-  imports: [ApprovalCard],
+  imports: [ApprovalCard, FinalVideoCard, StoryboardCard, VideoConsent, VideoSetupLog],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let t = task();
+    <app-video-setup-log [task]="t" />
     @switch (t.status) {
       @case ('draft') {
         <div class="panel neutral">
@@ -79,6 +82,15 @@ function accountLine(a: AccountRecord): string {
                 To keep the requirement, reply to the Planner below instead.
               </p>
             </div>
+          }
+          @case ('install_consent') {
+            <app-video-consent [task]="t" />
+          }
+          @case ('storyboard_approval') {
+            <app-storyboard-card [task]="t" />
+          }
+          @case ('video_approval') {
+            <app-final-video-card [task]="t" />
           }
           @case ('instruction_approval') {
             @if (approval(); as a) {

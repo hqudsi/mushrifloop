@@ -14,15 +14,15 @@
  * task is running. A failed turn leaves it in place, so Resume retries exactly that step.
  */
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { APP_SLUG } from '../../shared/app-config';
+import { APP_NAME, APP_SLUG } from '../../shared/app-config';
 import { getModel, isEffortValid } from '../../shared/models';
 import { FRESH_EXECUTOR_MAX_TURNS, type ApprovalMode } from '../../shared/settings';
 import { turnShareReader, type RunningTotals } from '../../shared/turn-cost';
-import { PLANNER_READ_ONLY_TOOLS, toolNames } from '../session-runner/args';
+import { PLANNER_READ_ONLY_TOOLS, buildTurnArgs, toolNames } from '../session-runner/args';
 import type { TurnOutcome, TurnSpec } from '../session-runner/types';
 import type { SchemaKind } from '../schema-validator';
 import { compareAccount, describeAccount, pinAccount } from './account';
@@ -39,6 +39,8 @@ import {
   handoffFileRequest,
   handoffRequest,
   heldDecisionNote,
+  imageCheckPrompt,
+  imageCheckSystemPrompt,
   instructionRejected,
   answerRetryNote,
   loopPauseNote,
@@ -53,6 +55,11 @@ import {
   type AnswerRetryVariation,
   skillWaivedNote,
   skillWaiverDeclined,
+  storyboardApprovedNote,
+  storyboardRefusal,
+  storyboardRejected,
+  videoMissingRefusal,
+  videoRejected,
   waiverReason,
   restartSeed,
   rolloverSeed,
@@ -79,6 +86,19 @@ import {
   skillOutcomes,
 } from './skills';
 import { restRefusal } from '../../shared/task-list';
+import {
+  VIDEO_PING_PONG_TURNS,
+  consentCovers,
+  newVideoState,
+  parseDoctor,
+  planNeedsDownload,
+  rolloverCapFor,
+  sameVideoFile,
+  type InstallPlan,
+  type TaskKind,
+  type VideoSettings,
+  type VideoSetupStep,
+} from '../../shared/video';
 import { attachmentBlock, withAttachments } from '../../shared/attachments';
 import type { Attachment } from '../../shared/task-model';
 import {
@@ -96,6 +116,8 @@ import {
   type ExecutorStep,
   type GitInspection,
   type HandoffSummary,
+  type KitCommand,
+  type KitRunResult,
   type ModelChangeMode,
   type NewTaskEvent,
   type NextStep,
@@ -138,6 +160,20 @@ export const HANDOFF_ATTEMPTS = 2;
 function isAnswerFailure(error: TurnRecord['error']): boolean {
   return error?.kind === 'structured_output_failed' || error?.kind === 'schema_invalid';
 }
+/** A download plan in words, for events and the consent record. */
+export function describePlan(plan: InstallPlan): string {
+  const parts = [
+    plan.packages ? "the kit's npm packages" : null,
+    plan.ffmpeg ? 'ffmpeg-static (a GPL build of ffmpeg)' : null,
+    plan.chromium ? "Playwright's Chromium browser" : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length > 0 ? parts.join(', ') : 'nothing';
+}
+
+function posixPathOf(file: string): string {
+  return file.split('\\').join('/');
+}
+
 /** Longest raw text kept inside an event; the complete output is in the raw files. */
 const EVENT_TEXT_LIMIT = 20_000;
 
@@ -169,6 +205,31 @@ export interface CreateTaskInput {
    * copied. Called once the task folder exists; if it throws, the folder is removed and nothing is created.
    */
   attach?: (dir: string) => Attachment[];
+  /** `video` for a Video task (SPEC.md §21); absent for a coding task. */
+  kind?: TaskKind;
+  /** Required when `kind` is `video`. */
+  video?: VideoSettings;
+  /** The downloads the human already agreed to in the New task dialog, if any (SPEC.md §21.3). */
+  videoConsent?: InstallPlan;
+}
+
+/**
+ * The image-check cache key (SPEC.md §21.3 step 5): a pass holds for one Claude Code version, one set of
+ * Planner launch flags and one model. The flags are taken from the function that builds a real Planner
+ * turn, so a change there changes the key.
+ */
+export function imageCheckKey(cliVersion: string | null, planner: AgentConfig): string {
+  const flags = buildTurnArgs({
+    agent: 'planner',
+    model: planner.model,
+    effort: planner.effort,
+    maxTurns: 0,
+    schemaJson: '{}',
+    systemPromptFile: 'system.md',
+    session: { mode: 'new', sessionId: 'session' },
+    tools: PLANNER_READ_ONLY_TOOLS,
+  });
+  return createHash('sha256').update(JSON.stringify({ cli: cliVersion ?? 'unknown', flags })).digest('hex').slice(0, 32);
 }
 
 /** `20260916-181530-a1b2c3` — sortable, and valid inside a git branch name. */
@@ -322,6 +383,24 @@ export class TaskRunner {
     if (!fs.existsSync(projectDir) || !fs.statSync(projectDir).isDirectory()) {
       throw new TaskCreationError(`The project folder does not exist: ${projectDir}`, 'Pick an existing folder.');
     }
+    const kind: TaskKind = input.kind ?? 'code';
+    if (kind === 'video') {
+      // SPEC.md §21.2: the Planner has to open rendered frames, and the Executor has to run the kit.
+      if (!input.video) throw new TaskCreationError('A Video task needs its length and format.', 'Choose them in the New task dialog.');
+      if (input.config.plannerContextMode !== 'read_only') {
+        throw new TaskCreationError(
+          'A Video task needs the read-only Planner: it has to open the rendered frames, and an isolated Planner cannot see the project folder.',
+          'Set the Planner context to "read-only project" for this task.',
+        );
+      }
+      const tools = toolNames(input.config.executorTools);
+      if (!tools.includes('Bash') && !tools.includes('PowerShell')) {
+        throw new TaskCreationError(
+          'A Video task needs an Executor that can run commands: its tools include neither Bash nor PowerShell.',
+          'Add Bash to the Executor tools in Settings → Claude Code connection.',
+        );
+      }
+    }
     const now = deps.now();
     let pinned;
     try {
@@ -343,9 +422,15 @@ export class TaskRunner {
     }
     const stamp = now.toISOString();
     const config = structuredClone(input.config);
+    const video = kind === 'video' && input.video ? newVideoState(structuredClone(input.video)) : null;
+    if (video && input.videoConsent && planNeedsDownload(input.videoConsent)) {
+      video.install.consent = { at: stamp, plan: structuredClone(input.videoConsent) };
+    }
     const task: TaskRecord = {
       schemaVersion: 1,
       id,
+      // A coding task carries neither field, exactly as before Video tasks existed.
+      ...(video ? { kind: 'video' as const, video } : {}),
       description,
       projectDir,
       plannerCwd: config.plannerContextMode === 'read_only' ? projectDir : deps.store.plannerCwd(id),
@@ -390,7 +475,16 @@ export class TaskRunner {
       ...(attachments.length > 0 ? { attachments } : {}),
     };
     const runner = new TaskRunner(task, 0, deps);
-    runner.emit({ type: 'task_created', description, projectDir, config, pinnedAccount: pinned, ...(attachments.length > 0 ? { attachments } : {}) });
+    runner.emit({
+      type: 'task_created',
+      description,
+      projectDir,
+      config,
+      pinnedAccount: pinned,
+      ...(attachments.length > 0 ? { attachments } : {}),
+      ...(video ? { kind: 'video' as const, video: video.settings } : {}),
+    });
+    if (video?.install.consent) runner.emit({ type: 'intervention', kind: 'consent_install', text: describePlan(video.install.consent.plan) });
     runner.save();
     return runner;
   }
@@ -549,12 +643,16 @@ export class TaskRunner {
     if (!ok || !stillWanted()) return;
     this.task.rateLimit = null;
     const parked = this.task.parkedWaiting;
-    if (parked) {
+    // A Video task whose setup has to run again (a forced image re-check, SPEC.md §21.3) finishes it first;
+    // the loop then brings the parked question back. A parked consent is itself part of that setup.
+    const video = this.task.video;
+    const setupFirst = this.task.kind === 'video' && video !== undefined && !video.setup.done && parked?.kind !== 'install_consent';
+    if (parked && !setupFirst) {
       this.task.parkedWaiting = null;
       this.wait(parked, 'Resumed: still waiting for you.');
       return;
     }
-    return this.continueRunning();
+    return this.continueRunning(parked !== null && setupFirst);
   }
 
   /** Answer the Planner's question, or tell it how to go on after a pause (SPEC.md §4 waiting_user). */
@@ -590,6 +688,12 @@ export class TaskRunner {
     }
     if (waiting?.kind === 'skill_waiver') {
       throw new TaskStateError('The task is waiting for a decision on a required skill: waive it, or reply to the planner.');
+    }
+    if (waiting?.kind === 'install_consent') {
+      throw new TaskStateError('The task is waiting for your decision on the downloads: agree to them, or cancel the task.');
+    }
+    if (waiting?.kind === 'storyboard_approval' || waiting?.kind === 'video_approval') {
+      throw new TaskStateError(`The task is waiting for you to ${waiting.kind === 'video_approval' ? 'watch the video' : 'look at the storyboard'}: approve it, or send your notes there.`);
     }
     this.emit({ type: 'intervention', kind: 'message', to: 'planner', text: body, ...this.attach(attachments) });
     const sent = this.withAttachments(body, attachments);
@@ -689,6 +793,13 @@ export class TaskRunner {
     }
     if (waiting.after === 'finish') {
       if (this.missingRequired().length === 0) {
+        // A Video task still has its own gate before it may finish (SPEC.md §21.5).
+        if (this.finalGate(waiting.finalReport ?? '')) {
+          // Either it now waits for the human at the gate (or for a possible loop), or the done was refused
+          // and the Planner has to be told.
+          const now = this.task.waiting?.kind;
+          return now === 'video_approval' || now === 'possible_loop' ? undefined : this.continueRunning();
+        }
         this.finish(waiting.finalReport ?? '');
         return;
       }
@@ -710,6 +821,94 @@ export class TaskRunner {
     if (next?.agent === 'planner') next.prompt = `${block}\n\n${next.prompt}`;
     else this.task.next = this.plannerStep('user_message', block);
     return this.continueRunning();
+  }
+
+  /**
+   * Video task, the storyboard gate (SPEC.md §21.5): the human approves the storyboard they were shown. Its
+   * hash is stored and the step that was held runs. If the file changed since it was shown, nothing is
+   * approved: the new one is shown instead.
+   */
+  async approveStoryboard(): Promise<void> {
+    const waiting = this.requireWaiting(['storyboard_approval']);
+    const { task, deps } = this;
+    const video = task.video;
+    if (!video || !deps.video) throw new TaskStateError('This is not a Video task.');
+    const reading = deps.video.storyboard(task.projectDir, video.settings);
+    if (reading.state !== 'valid' || reading.hash === null) {
+      throw new TaskStateError(`The storyboard on disk can no longer be approved: ${reading.state === 'missing' ? 'video/storyboard.json is gone.' : reading.problems.join(' ')}`);
+    }
+    if (reading.hash !== waiting.hash) {
+      this.wait({ ...waiting, hash: reading.hash, since: this.since() }, 'The storyboard changed while you were looking at it. This is the one on disk now.');
+      throw new TaskStateError('The storyboard changed while you were looking at it. Look at the one shown now, then approve it.');
+    }
+    video.storyboard = { approvedHash: reading.hash, approvedAt: this.since() };
+    video.revisionFrom = null;
+    video.revisionStalled = false;
+    this.emit({ type: 'intervention', kind: 'approve_storyboard', text: reading.hash });
+    // The Planner learns it with its next turn; the step that was held goes ahead now.
+    task.plannerNotes.push(storyboardApprovedNote());
+    return this.continueRunning();
+  }
+
+  /** The human's notes on the storyboard go to the Planner; the held step is dropped (SPEC.md §21.5). */
+  async rejectStoryboard(notes: string): Promise<void> {
+    const waiting = this.requireWaiting(['storyboard_approval']);
+    const body = this.requireText(notes);
+    const step = this.task.next;
+    this.emit({ type: 'intervention', kind: 'reject_storyboard', to: 'planner', text: body });
+    const carry = step?.agent === 'executor' && step.carryToPlanner ? `\n\n${step.carryToPlanner}` : '';
+    this.task.next = this.plannerStep('instruction_rejected', storyboardRejected(waiting.instruction, body) + carry);
+    return this.continueRunning();
+  }
+
+  /** Video task, the final gate: the human watched the video and approves it; the task finishes with the kept report. */
+  async approveVideo(): Promise<void> {
+    const waiting = this.requireWaiting(['video_approval']);
+    const { task, deps } = this;
+    const video = task.video;
+    if (!video || !deps.video) throw new TaskStateError('This is not a Video task.');
+    const outputs = deps.video.outputs(task.projectDir);
+    if (!outputs.mp4) throw new TaskStateError('The video file is no longer there (video/out/video.mp4), so it cannot be approved. Send a note to the Planner to render it again.');
+    if (video.settings.gif && !outputs.gif) throw new TaskStateError('The GIF is no longer there (video/out/video.gif), so the video cannot be approved. Send a note to the Planner to make it again.');
+    video.final = { approvedAt: this.since(), file: `${video.kitDir}/out/video.mp4`, size: outputs.mp4.size, mtimeMs: outputs.mp4.mtimeMs };
+    this.emit({ type: 'intervention', kind: 'approve_video' });
+    this.finish(waiting.finalReport);
+  }
+
+  /** The human's notes on the video go to the Planner and another round starts (SPEC.md §21.5). */
+  async rejectVideo(notes: string): Promise<void> {
+    this.requireWaiting(['video_approval']);
+    const body = this.requireText(notes);
+    this.emit({ type: 'intervention', kind: 'reject_video', to: 'planner', text: body });
+    this.task.next = this.plannerStep('user_message', videoRejected(body));
+    return this.continueRunning();
+  }
+
+  /** Video task: the human agrees to the downloads shown to them; setup goes on (SPEC.md §21.3). */
+  async consentInstall(): Promise<void> {
+    const waiting = this.requireWaiting(['install_consent']);
+    const video = this.task.video;
+    if (!video) throw new TaskStateError('This is not a Video task.');
+    video.install.consent = { at: this.since(), plan: structuredClone(waiting.plan) };
+    this.emit({ type: 'intervention', kind: 'consent_install', text: describePlan(waiting.plan) });
+    return this.continueRunning();
+  }
+
+  /**
+   * Video task: check again that the Planner can read an image, whatever the cache says (SPEC.md §21.3
+   * step 5). It runs with the rest of the setup the next time the task runs, so it never interrupts a turn.
+   */
+  recheckImage(): void {
+    const { task } = this;
+    const video = task.video;
+    if (task.kind !== 'video' || !video) throw new TaskStateError('This is not a Video task.');
+    if (this.driving) throw new TaskStateError('The task is running. Pause or stop it first.');
+    if (video.setup.imageCheck) this.deps.video?.forgetImageCheck(video.setup.imageCheck.key);
+    video.setup.imageCheck = null;
+    video.setup.forceImageCheck = true;
+    video.setup.done = false;
+    this.emit({ type: 'intervention', kind: 'recheck_image' });
+    this.save();
   }
 
   /** Applies to sessions started from now on (SPEC.md §6). */
@@ -764,6 +963,9 @@ export class TaskRunner {
       if (!Number.isInteger(n) || n < 1 || n > 500) throw new TaskStateError('Max cycles must be a whole number from 1 to 500.');
       if (n < task.cycles) throw new TaskStateError(`Max cycles cannot be below the ${task.cycles} cycles this task has already run.`);
     }
+    if (update.noCycleLimit === false && c.noCycleLimit === true && update.maxCycles === undefined && c.maxCycles < task.cycles) {
+      throw new TaskStateError(`This task has run ${task.cycles} cycles: set Max cycles to at least that before turning the limit back on.`);
+    }
     if (update.rolloverPercent !== undefined) {
       const n = update.rolloverPercent;
       if (!Number.isInteger(n) || n < 5 || n > 95) throw new TaskStateError('Rollover must be a whole percentage from 5 to 95.');
@@ -808,6 +1010,16 @@ export class TaskRunner {
       changes.push({ field: 'maxCycles', from: c.maxCycles, to: update.maxCycles });
       task.plannerNotes.push(`[ORCHESTRATOR] The user changed this task's limit from ${c.maxCycles} to ${update.maxCycles} executor turns.`);
       c.maxCycles = update.maxCycles;
+    }
+    if (update.noCycleLimit !== undefined && update.noCycleLimit !== (c.noCycleLimit === true)) {
+      changes.push({ field: 'noCycleLimit', from: c.noCycleLimit === true, to: update.noCycleLimit });
+      task.plannerNotes.push(
+        update.noCycleLimit
+          ? '[ORCHESTRATOR] The user removed the limit on executor turns for this task. Finish when the work is done; do not stretch it.'
+          : `[ORCHESTRATOR] The user set a limit for this task: at most ${c.maxCycles} executor turns, of which ${task.cycles} are used.`,
+      );
+      if (update.noCycleLimit) c.noCycleLimit = true;
+      else delete c.noCycleLimit;
     }
     if (update.rolloverPercent !== undefined && update.rolloverPercent !== c.rolloverPercent) {
       changes.push({ field: 'rolloverPercent', from: c.rolloverPercent, to: update.rolloverPercent });
@@ -984,14 +1196,15 @@ export class TaskRunner {
   // The loop
   // -------------------------------------------------------------------------
 
-  private continueRunning(): Promise<void> {
+  /** `keepParked`: a parked question stays parked while a Video task's setup runs first (see `resume`). */
+  private continueRunning(keepParked = false): Promise<void> {
     const waiting = this.task.waiting;
     if (waiting?.kind === 'possible_loop') {
       this.task.loop.recentTurns = [];
       this.task.loop.refusals = 0;
     }
     if (waiting?.kind === 'paused' && waiting.cause === 'daily_cap') this.task.capOverrideDay = localDay(this.deps.now());
-    this.task.parkedWaiting = null;
+    if (!keepParked) this.task.parkedWaiting = null;
     // A user action restarts the loop: a later service error gets its own retry (SPEC.md §5 net 12).
     this.task.loop.serviceRetry = null;
     this.stopRequested = false;
@@ -1029,6 +1242,18 @@ export class TaskRunner {
       }
       if (!this.task.setupDone) {
         await this.setup();
+        continue;
+      }
+      // A Video task: the kit is in place, installed and checked before the Planner's first turn (SPEC.md §21.3).
+      if (this.task.kind === 'video' && this.task.video && !this.task.video.setup.done) {
+        await this.videoSetup();
+        // Setup ran on a Resume that had a question or approval parked: it comes back now.
+        const parked = this.task.parkedWaiting;
+        if (parked && this.task.video.setup.done && this.task.status === 'running') {
+          this.task.parkedWaiting = null;
+          this.wait(parked, 'Resumed: still waiting for you.');
+          return;
+        }
         continue;
       }
       if (this.task.deferredTurn) {
@@ -1138,6 +1363,307 @@ export class TaskRunner {
     this.save();
   }
 
+  /**
+   * A Video task's own setup (SPEC.md §21.3), after the git branch and before the Planner's first turn:
+   * prerequisites, consent, the kit, its packages and tools, doctor, and the image check. Every step is safe
+   * to repeat, so Resume simply runs it again; a step that already holds costs a look at the disk.
+   */
+  private async videoSetup(): Promise<void> {
+    const { task, deps } = this;
+    const video = task.video;
+    const port = deps.video;
+    if (!video) return;
+    const step = (name: VideoSetupStep, ok: boolean, detail: string, extra: { durationMs?: number; logPath?: string } = {}) =>
+      this.emit({ type: 'video_setup', step: name, ok, detail, ...extra });
+    const stop = (name: VideoSetupStep, message: string, extra: { durationMs?: number; logPath?: string } = {}) => {
+      step(name, false, message, extra);
+      this.setStatus('error', message);
+    };
+    if (!port) {
+      stop('prerequisites', 'Video tasks are not available here: the video kit is not part of this build.');
+      return;
+    }
+    const folder = path.join(task.projectDir, video.kitDir);
+
+    // 1. Node.js and npm. New requirements: Claude Code's own install needs neither.
+    const pre = await port.prerequisites();
+    if (pre.node === null || pre.npm === null) {
+      const missing = [pre.node === null ? 'Node.js' : null, pre.npm === null ? 'npm' : null].filter(Boolean).join(' and ');
+      stop('prerequisites', `A Video task needs Node.js and npm, and ${missing} was not found on this computer. Install Node.js from https://nodejs.org (npm comes with it), restart ${APP_NAME}, then Resume.`);
+      return;
+    }
+
+    // 2. What has to be downloaded, on the path that will actually be taken, and the human's consent to it.
+    let kit = port.inspectKit(task.projectDir);
+    if (kit.state === 'foreign') {
+      stop('scaffold', `The project already has a ${video.kitDir} folder that is not a video kit (it has no ${video.kitDir}/kit.json). Nothing was changed. Move or rename that folder, then Resume.`);
+      return;
+    }
+    const plan: InstallPlan = {
+      packages: !kit.packagesInstalled,
+      ffmpeg: !kit.ffmpegInstalled && !(await port.ffmpegOnPath()),
+      chromium: !kit.chromiumDownloaded && (video.install.needsChromium || port.installedBrowser() === null),
+    };
+    if (this.stopRequested) return;
+    if (!consentCovers(video.install.consent?.plan ?? null, plan)) {
+      step('consent', false, `Waiting for the human to agree to: ${describePlan(plan)}.`);
+      this.wait({ kind: 'install_consent', plan, folder: posixPathOf(folder), since: this.since() }, 'This Video task needs to download its tools. Nothing is downloaded until you agree.');
+      return;
+    }
+
+    // 3. The kit: copied only into an absent or empty folder. One that is there is used as it is.
+    if (kit.state === 'absent' || kit.state === 'empty') {
+      try {
+        const copied = port.scaffold(task.projectDir);
+        video.setup.scaffold = 'copied';
+        video.setup.kitVersion = copied.kitVersion;
+        step('scaffold', true, `The video kit ${copied.kitVersion} was copied into ${video.kitDir}/.`);
+      } catch (err) {
+        stop('scaffold', `The video kit could not be copied into ${video.kitDir}/: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      await this.commitKit();
+      kit = port.inspectKit(task.projectDir);
+    } else if (video.setup.scaffold === null) {
+      video.setup.scaffold = 'existing';
+      video.setup.kitVersion = kit.version;
+      step('scaffold', true, `The project already has a video kit (${kit.version ?? 'unknown version'}) in ${video.kitDir}/; it is used as it is and nothing in it was changed.`);
+    }
+    this.save();
+
+    // 4. Packages and tools, run by the app itself with their output shown, a Cancel and a timeout.
+    if (plan.packages && (await this.runKit({ kind: 'install' }, 'install', "Installing the video kit's packages (npm ci)")) === null) return;
+    if ((plan.ffmpeg || plan.chromium) && (await this.runKit({ kind: 'tools', downloadBrowser: plan.chromium, ffmpeg: plan.ffmpeg }, 'tools', 'Installing the video tools')) === null) return;
+
+    // 5. Doctor: can this folder render? It also draws the code for the image check.
+    const code = port.newCode();
+    const ran = await this.runKit({ kind: 'doctor', code }, 'doctor', 'Checking that this computer can render');
+    if (ran === null) return;
+    const doctor = parseDoctor(port.readDoctor(task.projectDir), this.since());
+    video.setup.doctor = doctor;
+    if (!doctor || !doctor.ok) {
+      // No usable browser: the next plan includes Playwright's Chromium, and the human is asked again first.
+      if (doctor && doctor.chosen === null && !kit.chromiumDownloaded && !plan.chromium) video.install.needsChromium = true;
+      const why = doctor ? doctor.problems.join(' ') : `The check did not finish (exit code ${ran.exitCode ?? 'none'}). ${ran.tail.slice(-600)}`;
+      stop('doctor', `This computer cannot render the video yet. ${why}${video.install.needsChromium ? ' Resume: you will be asked before a browser is downloaded.' : ' Fix that, then Resume.'}`, { durationMs: ran.durationMs, logPath: ran.logPath });
+      return;
+    }
+    step(
+      'doctor',
+      true,
+      `${doctor.browser ?? 'Browser'} ${doctor.browserVersion ?? ''}, ${doctor.hardware ? 'hardware-accelerated' : 'software rendering'}${doctor.msPerFrame !== null ? `, ${doctor.msPerFrame} ms per frame` : ''}; ffmpeg from ${doctor.ffmpeg?.source ?? 'unknown'}.${doctor.warnings.length > 0 ? ` ${doctor.warnings.join(' ')}` : ''}`,
+      { durationMs: ran.durationMs, logPath: ran.logPath },
+    );
+    this.save();
+    if (this.stopRequested) return;
+
+    // 6. Can a session launched exactly like this task's Planner read an image? A pass is cached.
+    if (!(await this.imageCheck(code))) return;
+
+    video.setup.done = true;
+    video.setup.forceImageCheck = false;
+    this.save();
+  }
+
+  /**
+   * Run one kit command. Null means the task has stopped (cancelled, timed out or failed) and setup must
+   * return. Doctor's exit code only says "not ready"; its report says why, so its result always comes back.
+   */
+  private async runKit(command: KitCommand, name: 'install' | 'tools' | 'doctor', label: string): Promise<KitRunResult | null> {
+    const { task, deps } = this;
+    const port = deps.video;
+    if (!port) return null;
+    const controller = new AbortController();
+    this.controller = controller;
+    deps.onNotice?.({ type: 'setup_output', taskId: task.id, step: name, text: `${label} …\n` });
+    let result: KitRunResult;
+    try {
+      result = await port.run(command, {
+        projectDir: task.projectDir,
+        logDir: deps.store.rawDir(task.id),
+        signal: controller.signal,
+        onOutput: (text) => deps.onNotice?.({ type: 'setup_output', taskId: task.id, step: name, text }),
+      });
+    } finally {
+      this.controller = null;
+    }
+    const extra = { durationMs: result.durationMs, logPath: result.logPath };
+    // Stop (the Cancel button) is finished by the loop: the task becomes `stopped`, and Resume runs setup again.
+    if (result.aborted || this.stopRequested) {
+      this.emit({ type: 'video_setup', step: name, ok: false, detail: `${label}: cancelled.`, ...extra });
+      return null;
+    }
+    if (result.timedOut) {
+      const message = `${label} did not finish in time and was stopped. The output is in ${posixPathOf(result.logPath)}. Check the network connection, then Resume.`;
+      this.emit({ type: 'video_setup', step: name, ok: false, detail: message, ...extra });
+      this.setStatus('error', message);
+      return null;
+    }
+    if (name === 'doctor') return result;
+    if (result.exitCode !== 0) {
+      const message = `${label} failed (exit code ${result.exitCode ?? 'none'}). ${result.tail.slice(-800)}\nThe whole output is in ${posixPathOf(result.logPath)}. Fix that, then Resume.`;
+      this.emit({ type: 'video_setup', step: name, ok: false, detail: message, ...extra });
+      this.setStatus('error', message);
+      return null;
+    }
+    this.emit({ type: 'video_setup', step: name, ok: true, detail: `${label}: done.`, ...extra });
+    return result;
+  }
+
+  /**
+   * SPEC.md §21.3 step 5. One throwaway session with the Planner's exact launch configuration reads a code
+   * from a PNG the kit drew; the code is compared as a schema-validated field, never as prose. A pass is
+   * cached for this Claude Code version, these launch flags and this model; a failure never is.
+   */
+  private async imageCheck(code: string): Promise<boolean> {
+    const { task, deps } = this;
+    const video = task.video;
+    const port = deps.video;
+    if (!video || !port) return false;
+    const key = imageCheckKey(await port.cliVersion(), task.config.planner);
+    if (!video.setup.forceImageCheck && port.imageCheckPassed(key)) {
+      video.setup.imageCheck = { ok: true, cached: true, key, at: this.since() };
+      this.emit({ type: 'video_setup', step: 'image_check', ok: true, detail: 'The Planner can read images: checked earlier with this Claude Code version, these launch flags and this model.' });
+      return true;
+    }
+    if (!(await this.checkAccount('before_spawn', null))) return false;
+    const controller = new AbortController();
+    this.controller = controller;
+    const turnId = deps.newTurnId('planner');
+    const launch = task.config.planner;
+    let outcome: TurnOutcome;
+    try {
+      outcome = await deps.runTurn({
+        agent: 'planner',
+        prompt: imageCheckPrompt(`${video.kitDir}/out/doctor/code.png`),
+        newSessionId: deps.newSessionId(),
+        model: launch.model,
+        effort: launch.effort,
+        cwd: task.plannerCwd,
+        tools: PLANNER_READ_ONLY_TOOLS,
+        systemPrompt: imageCheckSystemPrompt(),
+        schema: 'image-check',
+        maxTurns: 6,
+        timeoutMs: Math.min(task.config.turnTimeoutMs, 5 * 60_000),
+        rawDir: deps.store.rawDir(task.id),
+        turnId,
+        signal: controller.signal,
+      });
+    } finally {
+      this.controller = null;
+    }
+    if (outcome.usage) deps.usage?.record(deps.now(), outcome.usage.modelUsage);
+    if (this.stopRequested) return false;
+    const cost = { turnId, costUsd: outcome.usage?.costUsd ?? null, durationMs: outcome.durationMs };
+    const answer = outcome.ok ? (outcome.output as { seen?: unknown; code?: unknown; problem?: unknown }) : null;
+    const read = answer && answer.seen === true && typeof answer.code === 'string' ? answer.code.trim().toUpperCase() : null;
+    if (read === code) {
+      port.recordImageCheck(key, this.since());
+      video.setup.imageCheck = { ok: true, cached: false, key, at: this.since() };
+      this.emit({ type: 'video_setup', step: 'image_check', ok: true, detail: 'The Planner read the code from the test image.', ...cost });
+      return true;
+    }
+    video.setup.imageCheck = { ok: false, cached: false, key, at: this.since() };
+    const what = !outcome.ok
+      ? `The check turn failed: ${outcome.error.message}`
+      : answer?.seen === true
+        ? 'It opened the image but read a different code than the one drawn.'
+        : `It could not see the image${typeof answer?.problem === 'string' && answer.problem.trim() ? `: ${answer.problem.trim()}` : '.'}`;
+    const message =
+      `Video tasks cannot run here: the Planner could not read an image in this project, so it could not review the video's frames. ${what} ` +
+      "This depends on the Claude Code version and the Planner's model. Update Claude Code or choose another Planner model in Task settings, then Resume to check again.";
+    this.emit({ type: 'video_setup', step: 'image_check', ok: false, detail: message, ...cost });
+    this.setStatus('error', message);
+    return false;
+  }
+
+  /** The copied kit gets its own commit, so cycle 1 holds only the task's changes (SPEC.md §21.1). */
+  private async commitKit(): Promise<void> {
+    const { task, deps } = this;
+    if (!task.git.enabled || !task.git.isRepo) return;
+    const message = `[${APP_SLUG}] video kit added`;
+    let info: CommitInfo;
+    try {
+      const current = await deps.git.currentBranch(task.projectDir);
+      if (current !== task.git.branch) {
+        info = { state: 'skipped', reason: `the project is on ${current ?? 'a detached HEAD'}, not ${task.git.branch ?? 'the task branch'}; nothing was committed.` };
+      } else {
+        const result = await deps.git.commitAll(task.projectDir, message);
+        info = result.committed && result.hash ? { state: 'committed', hash: result.hash, message, files: result.files } : { state: 'nothing_to_commit' };
+      }
+    } catch (err) {
+      info = { state: 'failed', error: err instanceof Error ? err.message : String(err) };
+    }
+    this.emit({ type: 'commit', cycle: null, purpose: 'video_kit', info });
+  }
+
+  /**
+   * The storyboard gate (SPEC.md §21.5), in every approval mode: before an Executor step of a Video task, if a
+   * valid storyboard is on disk and the human has approved none yet, the step is held for them — unless the
+   * Planner marked it as a change to the storyboard itself, and its last such step really changed it.
+   * Decided from the file the app reads and a schema-validated field, never from prose. True = held.
+   */
+  private storyboardGate(step: ExecutorStep): boolean {
+    const { task, deps } = this;
+    const video = task.video;
+    if (task.kind !== 'video' || !video || !deps.video || video.storyboard !== null) return false;
+    const reading = deps.video.storyboard(task.projectDir, video.settings);
+    if (reading.state !== 'valid' || reading.hash === null) return false;
+    if (step.revisesStoryboard === true && video.revisionStalled !== true) {
+      // Let through; afterwards the app looks whether the storyboard really changed.
+      video.revisionFrom = reading.hash;
+      return false;
+    }
+    this.wait(
+      { kind: 'storyboard_approval', hash: reading.hash, instruction: step.instruction ?? '', reasoning: step.reasoning, since: this.since() },
+      'The storyboard is ready for you. Nothing is built until you approve it.',
+    );
+    return true;
+  }
+
+  /** After an Executor turn that was let through as a storyboard revision: did the storyboard change? */
+  private noteRevisionOutcome(step: ExecutorStep, cycle: number): void {
+    const { task, deps } = this;
+    const video = task.video;
+    if (task.kind !== 'video' || !video || !deps.video || step.revisesStoryboard !== true || video.storyboard !== null) return;
+    if (video.revisionFrom === undefined || video.revisionFrom === null) return;
+    const now = deps.video.storyboard(task.projectDir, video.settings).hash;
+    if (now === video.revisionFrom) {
+      video.revisionStalled = true;
+      this.emit({ type: 'storyboard_unchanged', cycle, hash: now });
+    } else {
+      video.revisionStalled = false;
+    }
+    video.revisionFrom = null;
+  }
+
+  /**
+   * The final gate (SPEC.md §21.5), in every approval mode: a Video task's `done` is refused without an
+   * approved storyboard or without the rendered files, and otherwise waits for the human to watch the video.
+   * True = the answer was handled here and the task must not finish yet.
+   */
+  private finalGate(finalReport: string): boolean {
+    const { task, deps } = this;
+    const video = task.video;
+    if (task.kind !== 'video' || !video || !deps.video) return false;
+    if (video.storyboard === null) {
+      this.refuse('storyboard_not_approved', storyboardRefusal(deps.video.storyboard(task.projectDir, video.settings)), []);
+      return true;
+    }
+    const outputs = deps.video.outputs(task.projectDir);
+    const missing = [outputs.mp4 ? null : `${video.kitDir}/out/video.mp4`, video.settings.gif && !outputs.gif ? `${video.kitDir}/out/video.gif` : null].filter((m): m is string => m !== null);
+    if (missing.length > 0) {
+      this.refuse('video_missing', videoMissingRefusal(missing), missing);
+      return true;
+    }
+    // The same file the human already approved (a question answered on a finished task): nothing new to watch.
+    if (video.final && sameVideoFile(outputs.mp4, video.final)) return false;
+    task.next = null;
+    task.loop.refusals = 0;
+    this.wait({ kind: 'video_approval', finalReport, since: this.since() }, 'The video is rendered. Watch it, then approve it or send notes.');
+    return true;
+  }
+
   /** Everything that must hold before a step may spawn. False = do not spawn now. */
   private async preflight(step: NextStep): Promise<boolean> {
     const { task, deps } = this;
@@ -1152,10 +1678,11 @@ export class TaskRunner {
       }
     }
     if (step.agent === 'executor') {
-      if (step.cycle === null && task.cycles >= task.config.maxCycles) {
+      if (step.cycle === null && task.config.noCycleLimit !== true && task.cycles >= task.config.maxCycles) {
         this.setStatus('failed', `Reached the limit of ${task.config.maxCycles} cycles (SPEC safety net 1).`);
         return false;
       }
+      if (this.storyboardGate(step)) return false;
       if (step.needsApproval) {
         this.wait(
           { kind: 'instruction_approval', instruction: step.instruction ?? '', useSkills: step.useSkills, reasoning: step.reasoning, since: this.since() },
@@ -1208,7 +1735,9 @@ export class TaskRunner {
     });
     this.save();
 
-    const record = await this.runAgentTurn(agent, stdin, agent === 'planner' ? 'planner-output' : 'executor-output', turnId, step.purpose, cycle);
+    // A Video task's Planner answers with the base schema plus `revises_storyboard` (SPEC.md §21.5).
+    const plannerSchema: SchemaKind = task.kind === 'video' ? 'planner-output-video' : 'planner-output';
+    const record = await this.runAgentTurn(agent, stdin, agent === 'planner' ? plannerSchema : 'executor-output', turnId, step.purpose, cycle);
     if (!(await this.afterTurn(record))) return;
     await this.processTurn(record);
     this.save();
@@ -1334,7 +1863,8 @@ export class TaskRunner {
   private prepareSession(agent: AgentRole): AgentSession {
     const session = this.task.sessions[agent];
     if (session.systemPrompt === null) {
-      session.systemPrompt = systemPromptFor(agent, this.deps.rolePrompt(agent), this.task);
+      const videoText = this.task.kind === 'video' ? (this.deps.video?.prompt(agent) ?? null) : null;
+      session.systemPrompt = systemPromptFor(agent, this.deps.rolePrompt(agent), this.task, videoText);
       session.startedAt = this.deps.now().toISOString();
     }
     return session;
@@ -1671,6 +2201,7 @@ export class TaskRunner {
           this.wait({ kind: 'skill_waiver', skills: blocks, after: 'finish', finalReport: out.final_report ?? '', since: this.since() }, waiverReason(blocks));
           return;
         }
+        if (this.finalGate(out.final_report ?? '')) return;
         this.finish(out.final_report ?? '');
         return;
       }
@@ -1696,6 +2227,8 @@ export class TaskRunner {
           cycle: null,
           prompt: executorPrompt({ instruction, useSkills, userMessage: null }),
           retryNote: null,
+          // Only a Video task's schema has the field (SPEC.md §21.5).
+          ...(task.kind === 'video' && out.revises_storyboard === true ? { revisesStoryboard: true } : {}),
         };
         if (repeated) {
           const reason = 'Possible loop: the planner sent the same instruction twice in a row.';
@@ -1723,7 +2256,11 @@ export class TaskRunner {
           ? `required skills not run: ${missing.join(', ')}`
           : reason === 'plan_not_approved'
             ? 'plan not approved yet'
-            : 'tool-call markup inside its answer';
+            : reason === 'storyboard_not_approved'
+              ? 'the storyboard is not approved yet'
+              : reason === 'video_missing'
+                ? `not rendered yet: ${missing.join(', ')}`
+                : 'tool-call markup inside its answer';
       const why = `Possible loop: the orchestrator refused the planner's answer ${task.loop.refusals} times in a row (${detail}).`;
       task.loop.refusals = 0;
       this.emit({ type: 'loop_detected', kind: 'repeated_refusals', detail: why });
@@ -1792,7 +2329,12 @@ export class TaskRunner {
       out.changed_files.map((f) => f.path),
       process.platform === 'win32',
     );
-    const tracked = trackTurns(task.loop.recentTurns, { files: changed, instruction: step.instruction });
+    // SPEC.md §21.6: several fix rounds on one shot's file are ordinary video work.
+    this.noteRevisionOutcome(step, cycle);
+    const tracked =
+      task.kind === 'video'
+        ? trackTurns(task.loop.recentTurns, { files: changed, instruction: step.instruction }, VIDEO_PING_PONG_TURNS)
+        : trackTurns(task.loop.recentTurns, { files: changed, instruction: step.instruction });
     task.loop.recentTurns = tracked.history;
 
     const killed = record.processes.survivors.map((s) => s.name ?? `pid ${s.pid}`);
@@ -1821,7 +2363,7 @@ export class TaskRunner {
       answerCheck: record.answerCheck ?? null,
       toolUses: record.toolUses ?? {},
       cycle,
-      maxCycles: task.config.maxCycles,
+      maxCycles: task.config.noCycleLimit === true ? null : task.config.maxCycles,
       durationMs: record.durationMs,
       slow: record.slow,
       slowTurnMs: record.slowTurnMs,
@@ -1928,14 +2470,16 @@ export class TaskRunner {
     const { task } = this;
     const session = task.sessions[agent];
     const model = task.config[agent].model;
-    const due = rolloverDue(session.lastContextTokens, model, task.config.rolloverPercent);
+    // A Video task's Executor rolls over early: its state is in files (SPEC.md §21.10).
+    const due = rolloverDue(session.lastContextTokens, model, task.config.rolloverPercent, rolloverCapFor(task.kind, agent));
     // A handoff this session could not produce blocks further automatic tries (SPEC.md §15).
     if (session.rolloverBlocked && session.rolloverRequested === null) return true;
+    const why = due.capped
+      ? "a Video task's Executor starts a fresh session early: its state is in the project's files"
+      : `${task.config.rolloverPercent}% of ${model}'s auto-compact point`;
     const reason =
       session.rolloverRequested ??
-      (due.due
-        ? `context ${session.lastContextTokens?.toLocaleString('en-US')} tokens exceeded the rollover threshold ${due.threshold.toLocaleString('en-US')} (${task.config.rolloverPercent}% of ${model}'s auto-compact point)`
-        : null);
+      (due.due ? `context ${session.lastContextTokens?.toLocaleString('en-US')} tokens exceeded the rollover threshold ${due.threshold.toLocaleString('en-US')} (${why})` : null);
     if (reason === null) return true;
 
     if (!session.established) {

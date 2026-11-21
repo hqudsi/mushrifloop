@@ -59,6 +59,8 @@ export interface TaskDefaultSettings {
   executorModel: string;
   executorEffort: EffortLevel | null;
   maxCycles: number;
+  /** New tasks start with no cycle limit (SPEC.md §5 net 1). Off by default. */
+  noCycleLimit: boolean;
   turnTimeoutMinutes: number;
   /** Soft limit: a longer turn is marked "slow turn" and the planner is told (SPEC.md §5 net 8). */
   slowTurnWarningMinutes: number;
@@ -203,6 +205,7 @@ export function defaultSettings(): Settings {
       executorModel: DEFAULT_EXECUTOR_MODEL,
       executorEffort: DEFAULT_EXECUTOR_EFFORT,
       maxCycles: 100,
+      noCycleLimit: false,
       turnTimeoutMinutes: 60,
       slowTurnWarningMinutes: 30,
       maxTurnsPerSession: 80,
@@ -331,6 +334,7 @@ export function mergeSettings(stored: unknown): Settings {
       executorModel,
       executorEffort: coerceEffort(executorModel, rawExecutorEffort),
       maxCycles: pickInt(taskDefaults['maxCycles'], d.taskDefaults.maxCycles, 1, 500),
+      noCycleLimit: pickBoolean(taskDefaults['noCycleLimit'], d.taskDefaults.noCycleLimit),
       turnTimeoutMinutes: pickInt(taskDefaults['turnTimeoutMinutes'], d.taskDefaults.turnTimeoutMinutes, 1, 600),
       slowTurnWarningMinutes: pickInt(
         taskDefaults['slowTurnWarningMinutes'],

@@ -54,6 +54,17 @@ const MENU_HEIGHT = 144;
             <span class="ico" aria-hidden="true">▣</span>Archive
           </button>
         }
+        @if (s.task.video && s.task.unreadable === null) {
+          <button
+            type="button"
+            role="menuitem"
+            [disabled]="s.task.busy"
+            [title]="s.task.busy ? 'The task is running. Pause or stop it first.' : 'Checks again that the Planner can read an image, whatever was checked before. It runs the next time the task runs and costs one short Planner turn.'"
+            (click)="recheckImage(s.task.id)"
+          >
+            <span class="ico" aria-hidden="true">◎</span>Re-check image reading
+          </button>
+        }
         <div class="sep"></div>
         <button
           type="button"
@@ -152,6 +163,12 @@ export class TaskMenu {
   protected pin(taskId: string, pinned: boolean): void {
     this.close();
     void this.store.manage(taskId, { kind: 'pin', pinned });
+  }
+
+  /** Video task (SPEC.md §21.3): the image check runs again the next time the task runs. */
+  protected recheckImage(taskId: string): void {
+    this.close();
+    void this.store.manage(taskId, { kind: 'recheck_image' });
   }
 
   protected archive(taskId: string, archived: boolean): void {

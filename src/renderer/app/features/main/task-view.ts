@@ -8,6 +8,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
   afterNextRender,
   computed,
   effect,
@@ -21,7 +22,7 @@ import {
 import type { TaskDetail, TaskSummary } from '../../../../shared/ipc';
 import type { ApprovalMode } from '../../../../shared/settings';
 import { TERMINAL_STATUSES } from '../../../../shared/task-model';
-import type { TimelineItem } from '../../../../shared/timeline';
+import { TIMELINE_STEP, initiallyHidden, type TimelineItem } from '../../../../shared/timeline';
 import { PanelStore } from '../../core/panel-store';
 import { TasksStore } from '../../core/tasks-store';
 import { ContentPane } from '../../shared/content-pane';
@@ -58,7 +59,7 @@ const APPROVAL_MODES: readonly { id: ApprovalMode; label: string }[] = [
         <span class="title" dir="auto" [title]="t.description + '\n\nDouble-click to rename.'" (dblclick)="editingTitle.set(true)">{{ title() }}</span>
       }
       <app-status-pill [status]="t.status" [waiting]="t.waiting?.kind ?? null" />
-      <span class="cycle mono">cycle {{ t.cycles }} / {{ t.config.maxCycles }}</span>
+      <span class="cycle mono">cycle {{ t.cycles }}{{ t.config.noCycleLimit ? '' : ' / ' + t.config.maxCycles }}</span>
       <label class="approval" [title]="approvalTitle()">
         <span class="approval-k">Approval</span>
         <!-- "selected" on the options (see Settings): the select's own value would be applied too early. -->
@@ -133,7 +134,14 @@ const APPROVAL_MODES: readonly { id: ApprovalMode; label: string }[] = [
 
     <div class="timeline">
     <app-content-pane #pane (scroll)="onScroll()" (wheel)="onWheel($event)">
-      @for (item of store.timeline(); track item.key) {
+      <!-- SPEC.md §10: a long task shows its latest part; the earlier part is drawn when asked for. -->
+      @if (shown().hidden > 0) {
+        <div class="earlier">
+          <span>{{ shown().hidden }} earlier {{ shown().hidden === 1 ? 'item is' : 'items are' }} not shown</span>
+          <button type="button" class="new-here" (click)="showEarlier()">Show earlier</button>
+        </div>
+      }
+      @for (item of shown().items; track item.key) {
         @switch (item.kind) {
           @case ('start') {
             <app-start-card [item]="item" />
@@ -323,6 +331,14 @@ const APPROVAL_MODES: readonly { id: ApprovalMode; label: string }[] = [
       app-content-pane {
         --content-gap: 16px;
       }
+      .earlier {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
       .jump {
         position: absolute;
         bottom: 16px;
@@ -349,6 +365,7 @@ const APPROVAL_MODES: readonly { id: ApprovalMode; label: string }[] = [
 export class TaskView {
   protected readonly store = inject(TasksStore);
   protected readonly panel = inject(PanelStore);
+  private readonly injector = inject(Injector);
   /** "Task settings" (SPEC.md §6): open over the task it belongs to. */
   protected readonly settingsOpen = signal(false);
   /** Renaming in place (SPEC.md §10). */
@@ -386,6 +403,21 @@ export class TaskView {
    * they scroll up; "jump to latest" (or scrolling back down to the end) turns it on again.
    */
   protected readonly following = signal(true);
+
+  /**
+   * How many of the timeline's items are left out at the top (SPEC.md §10). Fixed when the task opens, so
+   * new items add to what is shown and nothing above the reader disappears; "Show earlier", or scrolling to
+   * the top, lowers it one step at a time.
+   */
+  private readonly window = signal<{ taskId: string; hidden: number } | null>(null);
+  protected readonly shown = computed(() => {
+    const all = this.store.timeline();
+    const w = this.window();
+    const hidden = w && w.taskId === this.detail().task.id ? Math.min(w.hidden, all.length) : initiallyHidden(all.length);
+    return { items: hidden > 0 ? all.slice(hidden) : all, hidden };
+  });
+  /** Set while an earlier step is being drawn, so one scroll to the top loads one step. */
+  private loadingEarlier = false;
 
   protected readonly approvalModes = APPROVAL_MODES;
   protected readonly ended = computed(() => TERMINAL_STATUSES.includes(this.detail().task.status));
@@ -449,6 +481,7 @@ export class TaskView {
         if (opened) {
           this.lastTaskId = task.id;
           this.following.set(true);
+          this.window.set({ taskId: task.id, hidden: initiallyHidden(this.store.timeline().length) });
         }
         requestAnimationFrame(() => this.scroll(opened));
       });
@@ -496,7 +529,28 @@ export class TaskView {
     const top = el.scrollTop;
     if (el.scrollHeight - top - el.clientHeight <= BOTTOM_PX) this.following.set(true);
     else if (top < this.lastScrollTop) this.following.set(false);
+    // Reaching the top while reading back draws the next earlier step.
+    if (top < this.lastScrollTop && top <= EARLIER_TRIGGER_PX) this.showEarlier();
     this.lastScrollTop = top;
+  }
+
+  /** Draws one more step of earlier items above, and keeps what the reader is looking at where it is. */
+  protected showEarlier(): void {
+    const el = this.paneElement();
+    const now = this.shown();
+    if (!el || now.hidden === 0 || this.loadingEarlier) return;
+    this.loadingEarlier = true;
+    this.following.set(false);
+    const fromBottom = el.scrollHeight - el.scrollTop;
+    this.window.set({ taskId: this.detail().task.id, hidden: Math.max(0, now.hidden - TIMELINE_STEP) });
+    afterNextRender(
+      () => {
+        el.scrollTop = el.scrollHeight - fromBottom;
+        this.lastScrollTop = el.scrollTop;
+        this.loadingEarlier = false;
+      },
+      { injector: this.injector },
+    );
   }
 
   /** Stop following on the first wheel movement upwards, before the scroll position has even changed. */
@@ -536,6 +590,9 @@ export class TaskView {
     if (this.following()) this.toEnd(el);
   }
 }
+
+/** This close to the top of the timeline, scrolling up draws the next earlier step. */
+const EARLIER_TRIGGER_PX = 120;
 
 /** A box inside the timeline (raw output, a long list) that takes this upward wheel movement itself. */
 function innerScrollsUp(target: EventTarget | null, pane: HTMLElement): boolean {

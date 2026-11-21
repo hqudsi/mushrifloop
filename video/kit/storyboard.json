@@ -1,0 +1,62 @@
+{
+  "title": "Sample: Hello / مرحبا",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationInFrames": 150,
+  "shots": [
+    {
+      "id": "shot-01",
+      "name": "Rooftops at dusk, Hello",
+      "startFrame": 0,
+      "endFrame": 74,
+      "onScreen": "Rooftops at dusk under a painted sky: painted walls, lit windows, water tanks, antennas, a laundry line. The camera slides slowly to the right. The word Hello eases in at the centre.",
+      "texts": [
+        {
+          "id": "hello",
+          "text": "Hello",
+          "lang": "en",
+          "startFrame": 12,
+          "endFrame": 74
+        }
+      ],
+      "reviewFrames": [0, 20, 45, 74],
+      "acceptance": [
+        "Hello is sharp, centred and readable against the sky.",
+        "Nothing overlaps the word Hello: every roof, antenna and pole stays below it.",
+        "No building is a plain box: each has a painted wall, and those facing us have windows.",
+        "The near roof carries props (tanks, air conditioners, pots, a laundry line); it is not empty."
+      ]
+    },
+    {
+      "id": "shot-02",
+      "name": "Hello steps back, مرحبا arrives",
+      "startFrame": 75,
+      "endFrame": 149,
+      "onScreen": "Hello moves up and shrinks; the Arabic word مرحبا rises into the centre and becomes the focal point. The rooftops keep sliding slowly.",
+      "texts": [
+        {
+          "id": "hello-small",
+          "text": "Hello",
+          "lang": "en",
+          "startFrame": 75,
+          "endFrame": 149
+        },
+        {
+          "id": "marhaban",
+          "text": "مرحبا",
+          "lang": "ar",
+          "startFrame": 84,
+          "endFrame": 149
+        }
+      ],
+      "reviewFrames": [75, 95, 120, 149],
+      "acceptance": [
+        "The Arabic letters are joined and the word reads right to left.",
+        "By frame 120 the Arabic word is the largest thing on screen and centred.",
+        "Hello stays readable above it and does not touch it.",
+        "The last frame is calm: nothing is still arriving, and the picture still reads as drawn (ink lines, painted surfaces, grain)."
+      ]
+    }
+  ]
+}

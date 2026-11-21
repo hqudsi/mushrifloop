@@ -59,13 +59,19 @@ export const FALLBACK_AUTO_COMPACT_THRESHOLD = 167_000;
  * verified against. Some models need a newer one: see their `minCliVersion` (SPEC.md §3.2, §8).
  */
 export const MIN_CLI_VERSION = '2.1.251';
-export const VERIFIED_CLI_VERSION = '2.1.293';
+export const VERIFIED_CLI_VERSION = '2.1.330';
 
 /**
  * Fable 5.1 needs this CLI (SPEC.md §3.2, decided 2026-09-26). The "Model configuration" docs give 2.1.257; the
  * API's own 400 on 2026-09-16 had named 2.1.251. Where the two disagree, the higher one is kept.
  */
 export const FABLE_5_1_MIN_CLI_VERSION = '2.1.257';
+
+/**
+ * Fable 5.2 needs this CLI (SPEC.md §8, added 2026-11-21): the figure of the "Model configuration" docs. It
+ * was run for real on 2.1.330 only (NOTES.md §78); no older CLI was tried.
+ */
+export const FABLE_5_2_MIN_CLI_VERSION = '2.1.321';
 
 /** Opus 5.5 needs this CLI, and from it `opus` resolves to Opus 5.5 (SPEC.md §8, "Model configuration" docs). */
 export const OPUS_5_5_MIN_CLI_VERSION = '2.1.280';
@@ -116,6 +122,7 @@ const RESOLVED_ONLY_AUTO_COMPACT: Readonly<Record<string, number>> = {
  * (a classifier fallback to Opus 4.8, the old `claude-fable-5`). SPEC.md §8: a turn shows the model that served it.
  */
 const MODEL_NAMES: Readonly<Record<string, string>> = {
+  'claude-fable-5-2': 'Fable 5.2',
   'claude-fable-5-1': 'Fable 5.1',
   'claude-fable-5': 'Fable 5',
   'claude-opus-5-5': 'Opus 5.5',
@@ -147,6 +154,16 @@ function model(
  * what actually runs. It may return if a future re-check shows it served by itself.
  */
 export const MODELS: readonly ModelSpec[] = [
+  {
+    id: 'claude-fable-5-2',
+    label: 'Fable 5.2',
+    efforts: ALL_EFFORTS,
+    contextWindow: 1_000_000,
+    autoCompactThreshold: 967_000,
+    servedAs: 'claude-fable-5-2',
+    isFable: true,
+    minCliVersion: FABLE_5_2_MIN_CLI_VERSION,
+  },
   {
     id: 'claude-fable-5-1',
     label: 'Fable 5.1',
@@ -402,14 +419,40 @@ export function modelsTooNewFor(cliVersion: string): Array<{ label: string; mini
   }));
 }
 
-/** Numeric comparison of dotted versions. Returns <0, 0 or >0. Missing parts count as 0. */
+/**
+ * Comparison of dotted versions. Returns <0, 0 or >0. Missing parts count as 0.
+ *
+ * A pre-release (`1.9.0-beta.1`) is older than its release (`1.9.0`), as in semantic versioning: without
+ * that, someone on a beta would never be told the release is out. Two pre-releases of the same version
+ * compare part by part: numbers as numbers, a number before a word, fewer parts before more. Build
+ * metadata (`+…`) is ignored.
+ */
 export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map((n) => Number.parseInt(n, 10) || 0);
-  const pb = b.split('.').map((n) => Number.parseInt(n, 10) || 0);
-  const len = Math.max(pa.length, pb.length);
+  const split = (v: string): { core: number[]; pre: string[] | null } => {
+    const plain = v.trim().split('+')[0] ?? '';
+    const dash = plain.indexOf('-');
+    const core = (dash < 0 ? plain : plain.slice(0, dash)).split('.').map((n) => Number.parseInt(n, 10) || 0);
+    return { core, pre: dash < 0 ? null : plain.slice(dash + 1).split('.') };
+  };
+  const va = split(a);
+  const vb = split(b);
+  const len = Math.max(va.core.length, vb.core.length);
   for (let i = 0; i < len; i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    const d = (va.core[i] ?? 0) - (vb.core[i] ?? 0);
     if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  if (va.pre === null || vb.pre === null) return va.pre === vb.pre ? 0 : va.pre === null ? 1 : -1;
+  for (let i = 0; i < Math.max(va.pre.length, vb.pre.length); i++) {
+    const x = va.pre[i];
+    const y = vb.pre[i];
+    if (x === undefined || y === undefined) return x === y ? 0 : x === undefined ? -1 : 1;
+    const nx = /^\d+$/.test(x);
+    const ny = /^\d+$/.test(y);
+    if (nx && ny) {
+      const d = Number(x) - Number(y);
+      if (d !== 0) return d < 0 ? -1 : 1;
+    } else if (nx !== ny) return nx ? -1 : 1;
+    else if (x !== y) return x < y ? -1 : 1;
   }
   return 0;
 }

@@ -1,6 +1,6 @@
 /**
  * Copying attached files into a task (SPEC.md §10, attachments). A file arrives either as a path on disk
- * (the 📎 picker, drag and drop) or as bytes (an image pasted from the clipboard). Everything is checked
+ * (the attach button's picker, drag and drop) or as bytes (an image pasted from the clipboard). Everything is checked
  * before anything is written, so a refused set leaves the task as it was.
  */
 

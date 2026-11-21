@@ -5,10 +5,12 @@
     <!-- Title is set at bootstrap from APP_NAME; a page <title> would override the window title. -->
     <base href="./" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- No remote resources: the renderer must work offline and load nothing it did not ship with. -->
+    <!-- No remote resources: the renderer must work offline and load nothing it did not ship with.
+         mushrifloop-media: is the app's own scheme for a Video task's rendered MP4 and GIF (MEDIA_PROTOCOL in
+         src/shared/app-config.ts; a test keeps this line and that constant in step). -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: mushrifloop-media:; media-src mushrifloop-media:; connect-src 'self'"
     />
   </head>
   <body>

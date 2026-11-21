@@ -7,6 +7,7 @@
 import type { EffortLevel } from './models';
 import type { ApprovalMode, PermissionMode, PlannerContextMode } from './settings';
 import type { RunningTotals } from './turn-cost';
+import type { InstallPlan, TaskKind, VideoSettings, VideoSetupStep, VideoState } from './video';
 
 // ---------------------------------------------------------------------------
 // Session runner data (src/main/session-runner)
@@ -193,6 +194,12 @@ export interface PlannerOutput {
   final_report?: string;
   use_skills?: string[];
   request_executor_rollover?: boolean;
+  /**
+   * Video tasks only (SPEC.md §21.5): this instruction changes the storyboard and nothing else, so the human
+   * is not asked to approve the storyboard before it runs. Never present on a coding task: its schema has no
+   * such field.
+   */
+  revises_storyboard?: boolean;
 }
 
 export interface ExecutorOutput {
@@ -237,6 +244,8 @@ export type ModelChangeMode = 'same_session' | 'fresh_session';
 /** "Task settings" on a task that is under way (SPEC.md §6). Absent fields are left as they are. */
 export interface ConfigUpdate {
   maxCycles?: number;
+  /** Turn the cycle limit off or back on (SPEC.md §5 net 1). */
+  noCycleLimit?: boolean;
   requiredSkills?: string[];
   autoBranchAndCommit?: boolean;
   rolloverPercent?: number;
@@ -257,7 +266,7 @@ export type ConfigChangeEntry =
   | { field: 'maxCycles' | 'rolloverPercent' | 'turnTimeoutMs' | 'slowTurnMs' | 'maxTurnsPerSession'; from: number; to: number }
   | { field: 'freshExecutorAfterRejectedTurns'; from: number | null; to: number | null }
   | { field: 'requiredSkills'; from: string[]; to: string[] }
-  | { field: 'autoBranchAndCommit'; from: boolean; to: boolean }
+  | { field: 'autoBranchAndCommit' | 'noCycleLimit'; from: boolean; to: boolean }
   | {
       field: 'model';
       agent: AgentRole;
@@ -272,6 +281,11 @@ export interface TaskConfig {
   planner: AgentConfig;
   executor: AgentConfig;
   maxCycles: number;
+  /**
+   * The user chose "No limit" (SPEC.md §5 net 1, 2026-11-21): the task is not failed at `maxCycles`, which
+   * keeps its last value for when the limit is turned back on. Absent or false: the limit holds.
+   */
+  noCycleLimit?: boolean;
   turnTimeoutMs: number;
   /** SPEC.md §5 net 8. */
   slowTurnMs: number;
@@ -388,6 +402,11 @@ export interface ExecutorStep extends StepBase {
   carryToPlanner: string | null;
   /** The Planner's reasoning for this instruction, for the approval card. */
   reasoning: string | null;
+  /**
+   * Video task (SPEC.md §21.5): the Planner marked this instruction as a change to the storyboard only, so the
+   * storyboard gate lets it through. Absent on every other step.
+   */
+  revisesStoryboard?: boolean;
   /** Assigned when the step is first dispatched; a retry keeps its number. */
   cycle: number | null;
 }
@@ -400,6 +419,21 @@ export type WaitingState =
   | { kind: 'instruction_approval'; instruction: string; useSkills: string[]; reasoning: string | null; since: string }
   | { kind: 'possible_loop'; reason: string; since: string }
   | { kind: 'paused'; cause: 'user' | 'daily_cap'; reason: string; since: string }
+  /**
+   * A Video task needs to download its tools into the project (SPEC.md §21.3): nothing is installed until
+   * the human agrees. `plan` is what would be downloaded on the path actually taken; `folder` is where.
+   */
+  | { kind: 'install_consent'; plan: InstallPlan; folder: string; since: string }
+  /**
+   * Video task, the storyboard gate (SPEC.md §21.5): a storyboard is on disk and the human has not approved
+   * one yet. `hash` is the file that was shown; `instruction` is the Planner's step that is being held.
+   */
+  | { kind: 'storyboard_approval'; hash: string; instruction: string; reasoning: string | null; since: string }
+  /**
+   * Video task, the final gate: the Planner answered done and the video is rendered. The human watches it;
+   * `finalReport` is kept and becomes the task's report when they approve.
+   */
+  | { kind: 'video_approval'; finalReport: string; since: string }
   | {
       /**
        * Required skills that cannot run here for an environmental reason (SPEC.md §16): the user may
@@ -514,6 +548,10 @@ export interface Attachment {
 export interface TaskRecord {
   schemaVersion: 1;
   id: string;
+  /** What kind of task this is (SPEC.md §21). Absent: a coding task, as every task was before 2026-11-10. */
+  kind?: TaskKind;
+  /** A Video task's settings, setup results and approvals. Present only when `kind` is `video`. */
+  video?: VideoState;
   description: string;
   /**
    * A name the user gave the task (SPEC.md §10). Null or absent: the task is shown by the first line of
@@ -716,7 +754,13 @@ export interface CycleSummary {
 export type LoopKind = 'identical_instruction' | 'file_ping_pong' | 'repeated_refusals';
 
 /** Why the orchestrator refused a Planner answer (SPEC.md §5 net 10). */
-export type RefusalReason = 'required_skills' | 'plan_not_approved' | 'malformed_answer';
+export type RefusalReason =
+  | 'required_skills'
+  | 'plan_not_approved'
+  | 'malformed_answer'
+  /** Video task (SPEC.md §21.5): done before the human approved a storyboard, or with no rendered video (or GIF). */
+  | 'storyboard_not_approved'
+  | 'video_missing';
 
 export type InterventionKind =
   | 'message'
@@ -731,10 +775,18 @@ export type InterventionKind =
   | 'standing_instructions'
   | 'rollover_now'
   | 'waive_skill'
-  | 'decline_waiver';
+  | 'decline_waiver'
+  /** Video tasks (SPEC.md §21.3): the human agreed to the downloads; a re-check of image reading was asked for. */
+  | 'consent_install'
+  | 'recheck_image'
+  /** Video task, the two gates (SPEC.md §21.5). */
+  | 'approve_storyboard'
+  | 'reject_storyboard'
+  | 'approve_video'
+  | 'reject_video';
 
 type EventBody =
-  | { type: 'task_created'; description: string; projectDir: string; config: TaskConfig; pinnedAccount: PinnedAccount; attachments?: Attachment[] }
+  | { type: 'task_created'; description: string; projectDir: string; config: TaskConfig; pinnedAccount: PinnedAccount; attachments?: Attachment[]; kind?: TaskKind; video?: VideoSettings }
   | { type: 'status'; from: TaskStatus; to: TaskStatus; reason: string | null; waiting: WaitingState | null }
   | { type: 'setup'; git: GitState; skills: string[] | null; skillsError: string | null; missingRequiredSkills: string[] }
   | {
@@ -796,7 +848,25 @@ type EventBody =
   | { type: 'renamed'; from: string | null; to: string | null }
   /** The user archived (true) or unarchived (false) the task (SPEC.md §10, managing tasks). */
   | { type: 'archived'; archived: boolean }
-  | { type: 'commit'; cycle: number | null; purpose: 'cycle' | 'before_review' | 'snapshot'; info: CommitInfo }
+  | { type: 'commit'; cycle: number | null; purpose: 'cycle' | 'before_review' | 'snapshot' | 'video_kit'; info: CommitInfo }
+  /**
+   * Video task (SPEC.md §21.5): an instruction marked as a storyboard revision ran and left the storyboard as
+   * it was. The next step is held for the human whatever it is marked as.
+   */
+  | { type: 'storyboard_unchanged'; cycle: number; hash: string | null }
+  /** One step of a Video task's setup (SPEC.md §21.3): what was checked or run, and how it went. */
+  | {
+      type: 'video_setup';
+      step: VideoSetupStep;
+      ok: boolean;
+      detail: string;
+      /** For a step that ran a command: how long it took and where its output was saved. */
+      durationMs?: number;
+      logPath?: string;
+      /** For the image check when a turn was spent. */
+      turnId?: string;
+      costUsd?: number | null;
+    }
   | { type: 'done'; finalReport: string }
   | { type: 'recovered'; detail: string };
 

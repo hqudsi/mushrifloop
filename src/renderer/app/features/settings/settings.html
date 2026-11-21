@@ -338,11 +338,19 @@
         <div class="field">
           <label class="label">Max cycles</label>
           <div class="stepper">
-            <button type="button" (click)="stepMaxCycles(-1)" aria-label="Fewer cycles">−</button>
+            <button type="button" [disabled]="settings().taskDefaults.noCycleLimit" (click)="stepMaxCycles(-1)" aria-label="Fewer cycles">−</button>
             <span>{{ settings().taskDefaults.maxCycles }}</span>
-            <button type="button" (click)="stepMaxCycles(1)" aria-label="More cycles">+</button>
+            <button type="button" [disabled]="settings().taskDefaults.noCycleLimit" (click)="stepMaxCycles(1)" aria-label="More cycles">+</button>
           </div>
-          <span class="hint">Hitting the cap fails the task with a reason.</span>
+          <label class="no-limit">
+            <input type="checkbox" [checked]="settings().taskDefaults.noCycleLimit" (change)="setNoCycleLimit($any($event.target).checked)" />
+            No limit
+          </label>
+          @if (settings().taskDefaults.noCycleLimit) {
+            <span class="hint">New tasks then stop only when the Planner says done, at a usage limit, or when you stop them.</span>
+          } @else {
+            <span class="hint">Hitting the cap fails the task with a reason.</span>
+          }
         </div>
 
         <div class="field">
@@ -991,6 +999,30 @@
               } @else {
                 <div class="hint">This package ships no license file; its package.json declares {{ pkg.license }}.</div>
               }
+            </div>
+          </details>
+        }
+      </div>
+
+      <!-- Video tasks (SPEC.md §21): what ships with the kit, and what a Video task downloads on request. -->
+      <div>
+        <h2>Video tasks</h2>
+        <p class="sub">
+          A Video task copies a small kit into your project. Two fonts ship inside the kit; everything else is downloaded
+          into the project's <span class="mono">video</span> folder by npm, only after you agree, and is not part of {{ appName }}.
+        </p>
+      </div>
+      <div class="licenses">
+        @for (item of videoLicenses; track item.name) {
+          <details class="pkg">
+            <summary>
+              <span class="mono">{{ item.name }}</span>
+              <span class="mono muted">{{ item.version }}</span>
+              <span class="badge">{{ item.license }}</span>
+            </summary>
+            <div class="pkg-body">
+              <div>{{ item.note }}</div>
+              <div class="hint">{{ item.shipped ? 'Ships inside the video kit; its licence text is in the kit, beside the font files.' : 'Not shipped: downloaded into the project on request.' }}</div>
             </div>
           </details>
         }

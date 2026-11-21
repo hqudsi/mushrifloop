@@ -70,10 +70,12 @@ export function instructionSimilarity(a: string, b: string): number {
 export function trackTurns(
   history: readonly TurnTrace[],
   turn: TurnTrace,
+  /** How many consecutive turns count: {@link PING_PONG_TURNS}, or more for a Video task (SPEC.md §21.6). */
+  window: number = PING_PONG_TURNS,
 ): { history: TurnTrace[]; pingPong: boolean; similarity: number | null } {
   if (turn.files.length === 0) return { history: [], pingPong: false, similarity: null };
-  const next = [...history, { files: [...turn.files], instruction: turn.instruction }].slice(-PING_PONG_TURNS);
-  if (next.length < PING_PONG_TURNS) return { history: next, pingPong: false, similarity: null };
+  const next = [...history, { files: [...turn.files], instruction: turn.instruction }].slice(-window);
+  if (next.length < window) return { history: next, pingPong: false, similarity: null };
   const key = JSON.stringify(turn.files);
   if (!next.every((t) => JSON.stringify(t.files) === key)) return { history: next, pingPong: false, similarity: null };
   let lowest = 1;
@@ -85,10 +87,20 @@ export function trackTurns(
   return { history: next, pingPong: lowest >= INSTRUCTION_SIMILARITY, similarity: lowest };
 }
 
-/** §15: roll over when the last turn's context exceeds rolloverPercent × the model's auto-compact threshold. */
-export function rolloverDue(contextTokens: number | null, model: string, rolloverPercent: number): { due: boolean; threshold: number } {
-  const threshold = rolloverThresholdFor(model, rolloverPercent);
-  return { due: contextTokens !== null && contextTokens > threshold, threshold };
+/**
+ * §15: roll over when the last turn's context exceeds rolloverPercent × the model's auto-compact threshold.
+ * `cap` is a lower limit in tokens that some sessions have (the Executor of a Video task, §21.10); the
+ * smaller of the two is the threshold, and `capped` says the cap was the one that counted.
+ */
+export function rolloverDue(
+  contextTokens: number | null,
+  model: string,
+  rolloverPercent: number,
+  cap: number | null = null,
+): { due: boolean; threshold: number; capped: boolean } {
+  const byModel = rolloverThresholdFor(model, rolloverPercent);
+  const threshold = cap !== null ? Math.min(cap, byModel) : byModel;
+  return { due: contextTokens !== null && contextTokens > threshold, threshold, capped: threshold < byModel };
 }
 
 /** Local calendar day, `YYYY-MM-DD`, for the usage estimate. */

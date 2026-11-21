@@ -58,6 +58,9 @@ export interface ShownToast extends TaskToast {
   id: number;
 }
 
+/** How much of a setup command's output the window keeps; the whole of it is saved with the task. */
+const SETUP_LOG_CHARS = 12_000;
+
 @Injectable({ providedIn: 'root' })
 export class TasksStore {
   readonly tasks = signal<TaskSummary[]>([]);
@@ -74,6 +77,8 @@ export class TasksStore {
   readonly accountLoading = signal(false);
   readonly actionError = signal<ActionError | null>(null);
   readonly pendingAction = signal<string | null>(null);
+  /** Output of a Video task's setup command, as it arrives (SPEC.md §21.3). Only the end is kept here. */
+  readonly setupLog = signal<{ taskId: string; step: 'install' | 'tools' | 'doctor'; text: string } | null>(null);
   readonly listError = signal<string | null>(null);
   /** Ticks every second, for elapsed times. */
   readonly now = signal(Date.now());
@@ -109,9 +114,16 @@ export class TasksStore {
 
   readonly sortedTasks = computed(() => sortTasks(this.tasks()));
   readonly selected = computed(() => this.tasks().find((t) => t.id === this.selectedId()) ?? null);
+  /**
+   * The timeline is built from the events and nothing else, so it is built again only when an event arrives
+   * or the task starts or stops being busy: a saved task.json (several per turn) leaves it as it is. On a
+   * task of 4,000 events every rebuild made every card on screen draw again (NOTES.md §77).
+   */
+  private readonly timelineEvents = computed(() => this.detail()?.events ?? null);
+  private readonly timelineBusy = computed(() => this.detail()?.busy ?? false);
   readonly timeline = computed<TimelineItem[]>(() => {
-    const d = this.detail();
-    return d ? buildTimeline(d.events, d.busy) : [];
+    const events = this.timelineEvents();
+    return events ? buildTimeline(events, this.timelineBusy()) : [];
   });
   readonly running = computed(() => runningTurn(this.timeline()));
   readonly waitingCount = computed(() => this.tasks().filter((t) => listRank(t) === 0).length);
@@ -290,7 +302,7 @@ export class TasksStore {
    * Archive / Unarchive and Pin / Unpin (SPEC.md §10), on any task in the list. A refusal is shown on that
    * task's control bar, so the task is opened first.
    */
-  async manage(taskId: string, action: Extract<TaskAction, { kind: 'archive' | 'pin' }>): Promise<boolean> {
+  async manage(taskId: string, action: Extract<TaskAction, { kind: 'archive' | 'pin' | 'recheck_image' }>): Promise<boolean> {
     let result: ActionResult;
     try {
       result = await api().taskAction(taskId, action);
@@ -370,6 +382,12 @@ export class TasksStore {
       case 'turn_event':
         this.onTurnEvent(notice);
         break;
+      case 'setup_output': {
+        const current = this.setupLog();
+        const before = current && current.taskId === notice.taskId ? current.text : '';
+        this.setupLog.set({ taskId: notice.taskId, step: notice.step, text: (before + notice.text).slice(-SETUP_LOG_CHARS) });
+        break;
+      }
       case 'toast':
         this.onToast(notice.toast);
         break;

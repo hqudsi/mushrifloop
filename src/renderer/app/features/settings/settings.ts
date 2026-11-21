@@ -5,6 +5,7 @@
  * All state lives in SettingsStore; this component only edits the draft and triggers IPC calls.
  */
 
+import { VIDEO_THIRD_PARTY } from '../../../../shared/video';
 import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, output, signal, viewChild } from '@angular/core';
 
 import { APP_COPYRIGHT, APP_DEVELOPER, APP_ISSUES_URL, APP_NAME, APP_REPO_URL, APP_SLUG, APP_TAGLINE } from '../../../../shared/app-config';
@@ -135,6 +136,8 @@ export class SettingsScreen {
   protected readonly copyright = APP_COPYRIGHT;
   protected readonly repoUrl = APP_REPO_URL;
   protected readonly issuesUrl = APP_ISSUES_URL;
+  /** What Video tasks ship and download (SPEC.md §21.1): named here although most of it is not in the installer. */
+  protected readonly videoLicenses = VIDEO_THIRD_PARTY;
   protected readonly licenses = THIRD_PARTY_LICENSES;
   /** The live CLI reading the account footer uses: `claude --version` and the resolved binary. */
   protected readonly cli = computed(() => this.tasks.account());
@@ -398,6 +401,13 @@ export class SettingsScreen {
   protected async downloadUpdate(): Promise<void> {
     const result = await this.updates.download();
     if (!result.ok) this.store.error.set(result.error ?? 'Could not open the release page.');
+  }
+
+  /** SPEC.md §5 net 1: new tasks may start without a cycle limit. */
+  protected setNoCycleLimit(on: boolean): void {
+    this.store.update((d) => {
+      d.taskDefaults.noCycleLimit = on;
+    });
   }
 
   protected stepMaxCycles(delta: number): void {

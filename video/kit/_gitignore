@@ -1,0 +1,5 @@
+# Installed tools, the built page, and everything rendered: frames, review images, MP4, GIF.
+# Stills and videos are regenerated from the code, so none of them is committed.
+node_modules/
+dist/
+out/
